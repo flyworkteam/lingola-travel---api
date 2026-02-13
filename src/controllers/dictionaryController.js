@@ -215,7 +215,7 @@ const getTravelPhrases = async (req, res, next) => {
       params.push(category);
     }
 
-    sql += ' ORDER BY tp.category ASC, tp.phrase ASC';
+    sql += ' ORDER BY tp.category ASC, tp.display_order ASC, tp.english_text ASC';
     
     const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
     const safeOffset = Math.max(0, parseInt(offset) || 0);
