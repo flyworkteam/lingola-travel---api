@@ -31,6 +31,9 @@ router.delete('/bookmarks/:id', authenticateToken, libraryController.removeBookm
 // GET /api/v1/library/folders - Get folders
 router.get('/folders', authenticateToken, libraryController.getFolders);
 
+// GET /api/v1/library/folders/:id/items - Get items in a folder
+router.get('/folders/:id/items', authenticateToken, libraryController.getFolderItems);
+
 // POST /api/v1/library/folders - Create folder
 router.post('/folders',
   authenticateToken,
@@ -42,7 +45,21 @@ router.post('/folders',
   libraryController.createFolder
 );
 
+// POST /api/v1/library/folders/:id/items - Add item to folder
+router.post('/folders/:id/items',
+  authenticateToken,
+  [
+    body('item_type').isIn(['dictionary_word', 'travel_phrase', 'lesson_vocabulary']),
+    body('item_id').isString().notEmpty()
+  ],
+  handleValidationErrors,
+  libraryController.addItemToFolder
+);
+
 // DELETE /api/v1/library/folders/:id - Delete folder
 router.delete('/folders/:id', authenticateToken, libraryController.deleteFolder);
+
+// DELETE /api/v1/library/items/:id - Remove item from library
+router.delete('/items/:id', authenticateToken, libraryController.removeItemFromLibrary);
 
 module.exports = router;

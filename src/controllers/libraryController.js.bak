@@ -322,11 +322,6 @@ const getFolderItems = async (req, res, next) => {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Klasör bulunamadı'));
     }
 
-    // Get items with full details
-    // Sanitize limit and offset (prevent SQL injection)
-    const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
-    const safeOffset = Math.max(0, parseInt(offset) || 0);
-
     // Get items with full details (words and phrases)
     const sql = `
       SELECT 
@@ -365,10 +360,10 @@ const getFolderItems = async (req, res, next) => {
       LEFT JOIN lesson_vocabulary lv ON li.item_id = lv.id AND li.item_type = 'lesson_vocabulary'
       WHERE li.folder_id = ?
       ORDER BY li.created_at DESC
-      LIMIT ${safeLimit} OFFSET ${safeOffset}
+      LIMIT ? OFFSET ?
     `;
 
-    const items = await query(sql, [folderId]);
+    const items = await query(sql, [folderId, parseInt(limit), parseInt(offset)]);
 
     res.json(successResponse({
       folder: folderCheck[0],
