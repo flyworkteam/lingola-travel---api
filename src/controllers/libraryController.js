@@ -25,6 +25,13 @@ const getLibraryItems = async (req, res, next) => {
     }
 
     // Get recent bookmarks
+    // Get user's target language from onboarding
+    const userOnboarding = await query(
+      'SELECT target_language FROM user_onboarding WHERE user_id = ?',
+      [userId]
+    );
+    const targetLanguage = userOnboarding.length > 0 ? userOnboarding[0].target_language : 'en';
+
     const bookmarksSql = `
       SELECT 
         b.id as bookmark_id,
@@ -42,15 +49,20 @@ const getLibraryItems = async (req, res, next) => {
           WHEN b.item_type = 'lesson_vocabulary' THEN lv.definition
         END as translation
       FROM bookmarks b
-      LEFT JOIN dictionary_words dw ON b.item_id = dw.id AND b.item_type = 'dictionary_word'
-      LEFT JOIN travel_phrases tp ON b.item_id = tp.id AND b.item_type = 'travel_phrase'
-      LEFT JOIN lesson_vocabulary lv ON b.item_id = lv.id AND b.item_type = 'lesson_vocabulary'
+      LEFT JOIN dictionary_words dw ON b.item_id = dw.id AND b.item_type = 'dictionary_word' AND dw.target_language = ?
+      LEFT JOIN travel_phrases tp ON b.item_id = tp.id AND b.item_type = 'travel_phrase' AND tp.target_language = ?
+      LEFT JOIN lesson_vocabulary lv ON b.item_id = lv.id AND b.item_type = 'lesson_vocabulary' AND lv.target_language = ?
       WHERE b.user_id = ?
+      AND (
+        (b.item_type = 'dictionary_word' AND dw.id IS NOT NULL) OR
+        (b.item_type = 'travel_phrase' AND tp.id IS NOT NULL) OR
+        (b.item_type = 'lesson_vocabulary' AND lv.id IS NOT NULL)
+      )
       ORDER BY b.created_at DESC
       LIMIT 20
     `;
 
-    const bookmarks = await query(bookmarksSql, [userId]);
+    const bookmarks = await query(bookmarksSql, [targetLanguage, targetLanguage, targetLanguage, userId]);
 
     // Get folders
     const foldersSql = `
@@ -107,6 +119,13 @@ const getBookmarks = async (req, res, next) => {
     const userId = req.user.id;
     const { type, limit = 50, offset = 0 } = req.query;
 
+    // Get user's target language from onboarding
+    const userOnboarding = await query(
+      'SELECT target_language FROM user_onboarding WHERE user_id = ?',
+      [userId]
+    );
+    const targetLanguage = userOnboarding.length > 0 ? userOnboarding[0].target_language : 'en';
+
     let sql = `
       SELECT 
         b.id as bookmark_id,
@@ -129,14 +148,19 @@ const getBookmarks = async (req, res, next) => {
           ELSE NULL
         END as category
       FROM bookmarks b
-      LEFT JOIN dictionary_words dw ON b.item_id = dw.id AND b.item_type = 'dictionary_word'
+      LEFT JOIN dictionary_words dw ON b.item_id = dw.id AND b.item_type = 'dictionary_word' AND dw.target_language = ?
       LEFT JOIN dictionary_categories dc ON dw.category_id = dc.id
-      LEFT JOIN travel_phrases tp ON b.item_id = tp.id AND b.item_type = 'travel_phrase'
-      LEFT JOIN lesson_vocabulary lv ON b.item_id = lv.id AND b.item_type = 'lesson_vocabulary'
+      LEFT JOIN travel_phrases tp ON b.item_id = tp.id AND b.item_type = 'travel_phrase' AND tp.target_language = ?
+      LEFT JOIN lesson_vocabulary lv ON b.item_id = lv.id AND b.item_type = 'lesson_vocabulary' AND lv.target_language = ?
       WHERE b.user_id = ?
+      AND (
+        (b.item_type = 'dictionary_word' AND dw.id IS NOT NULL) OR
+        (b.item_type = 'travel_phrase' AND tp.id IS NOT NULL) OR
+        (b.item_type = 'lesson_vocabulary' AND lv.id IS NOT NULL)
+      )
     `;
 
-    const params = [userId];
+    const params = [targetLanguage, targetLanguage, targetLanguage, userId];
 
     if (type) {
       sql += ' AND b.item_type = ?';
@@ -230,6 +254,8 @@ const removeBookmark = async (req, res, next) => {
 const getFolders = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    
+    console.log('📁 getFolders - User ID:', userId);
 
     const sql = `
       SELECT 
@@ -246,6 +272,8 @@ const getFolders = async (req, res, next) => {
     `;
 
     const folders = await query(sql, [userId]);
+    
+    console.log('📁 Folders result:', folders.map(f => ({ id: f.id, name: f.name, item_count: f.item_count })));
 
     res.json(successResponse({ folders }));
   } catch (error) {
@@ -322,6 +350,13 @@ const getFolderItems = async (req, res, next) => {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Klasör bulunamadı'));
     }
 
+    // Get user's target language from onboarding
+    const userOnboarding = await query(
+      'SELECT target_language FROM user_onboarding WHERE user_id = ?',
+      [userId]
+    );
+    const targetLanguage = userOnboarding.length > 0 ? userOnboarding[0].target_language : 'en';
+
     // Get items with full details
     // Sanitize limit and offset (prevent SQL injection)
     const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
@@ -357,18 +392,33 @@ const getFolderItems = async (req, res, next) => {
           WHEN li.item_type = 'dictionary_word' THEN dc.name
           WHEN li.item_type = 'travel_phrase' THEN tp.category
           ELSE NULL
-        END as category
+        END as category,
+        CASE 
+          WHEN li.item_type = 'dictionary_word' THEN dw.source_language
+          WHEN li.item_type = 'travel_phrase' THEN tp.source_language
+          WHEN li.item_type = 'lesson_vocabulary' THEN lv.source_language
+        END as source_language,
+        CASE 
+          WHEN li.item_type = 'dictionary_word' THEN dw.target_language
+          WHEN li.item_type = 'travel_phrase' THEN tp.target_language
+          WHEN li.item_type = 'lesson_vocabulary' THEN lv.target_language
+        END as target_language
       FROM library_items li
-      LEFT JOIN dictionary_words dw ON li.item_id = dw.id AND li.item_type = 'dictionary_word'
+      LEFT JOIN dictionary_words dw ON li.item_id = dw.id AND li.item_type = 'dictionary_word' AND dw.target_language = ?
       LEFT JOIN dictionary_categories dc ON dw.category_id = dc.id
-      LEFT JOIN travel_phrases tp ON li.item_id = tp.id AND li.item_type = 'travel_phrase'
-      LEFT JOIN lesson_vocabulary lv ON li.item_id = lv.id AND li.item_type = 'lesson_vocabulary'
+      LEFT JOIN travel_phrases tp ON li.item_id = tp.id AND li.item_type = 'travel_phrase' AND tp.target_language = ?
+      LEFT JOIN lesson_vocabulary lv ON li.item_id = lv.id AND li.item_type = 'lesson_vocabulary' AND lv.target_language = ?
       WHERE li.folder_id = ?
+      AND (
+        (li.item_type = 'dictionary_word' AND dw.id IS NOT NULL) OR
+        (li.item_type = 'travel_phrase' AND tp.id IS NOT NULL) OR
+        (li.item_type = 'lesson_vocabulary' AND lv.id IS NOT NULL)
+      )
       ORDER BY li.created_at DESC
       LIMIT ${safeLimit} OFFSET ${safeOffset}
     `;
 
-    const items = await query(sql, [folderId]);
+    const items = await query(sql, [targetLanguage, targetLanguage, targetLanguage, folderId]);
 
     res.json(successResponse({
       folder: folderCheck[0],

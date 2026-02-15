@@ -13,7 +13,7 @@ const {
   getRefreshTokenExpiry
 } = require('../utils/jwt');
 const { successResponse, errorResponse, ErrorCodes } = require('../utils/response');
-const { verifyGoogleToken } = require('../utils/socialAuth');
+const { verifyGoogleToken, verifyAppleToken, verifyFacebookToken } = require('../utils/socialAuth');
 
 /**
  * Email/Password Login
@@ -177,6 +177,226 @@ async function googleLogin(req, res) {
     console.error('Google login error:', error);
     res.status(500).json(
       errorResponse(ErrorCodes.SERVER_ERROR, 'Google girişi başarısız')
+    );
+  }
+}
+
+/**
+ * Apple Sign-In
+ */
+async function appleLogin(req, res) {
+  try {
+    const { identityToken, authorizationCode, email, name } = req.body;
+    
+    // Verify Apple identity token
+    const appleUser = await verifyAppleToken(identityToken);
+    
+    if (!appleUser) {
+      return res.status(401).json(
+        errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Apple token doğrulanamadı')
+      );
+    }
+    
+    // Check if user exists
+    let users = await query(
+      'SELECT * FROM users WHERE auth_provider = ? AND external_auth_id = ?',
+      ['apple', appleUser.sub]
+    );
+    
+    let user;
+    let isNewUser = false;
+    
+    if (users.length === 0) {
+      // Create new user
+      // Note: Apple only provides email/name on first sign-in
+      isNewUser = true;
+      const userId = uuidv4();
+      
+      // Use provided email/name from first sign-in, otherwise use token data
+      const userEmail = email || appleUser.email;
+      const userName = name || 'Apple User';
+      
+      await query(
+        `INSERT INTO users (id, email, name, auth_provider, external_auth_id, trial_started_at) 
+         VALUES (?, ?, ?, ?, ?, NOW())`,
+        [userId, userEmail, userName, 'apple', appleUser.sub]
+      );
+      
+      // Create user stats
+      await query(
+        'INSERT INTO user_stats (user_id) VALUES (?)',
+        [userId]
+      );
+      
+      user = {
+        id: userId,
+        email: userEmail,
+        name: userName,
+        photo_url: null,
+        auth_provider: 'apple',
+        is_premium: false,
+        is_anonymous: false,
+        trial_started_at: new Date()
+      };
+    } else {
+      user = users[0];
+      
+      // Update email/name if provided (in case they were null before)
+      if (email || name) {
+        const updates = [];
+        const params = [];
+        
+        if (email && !user.email) {
+          updates.push('email = ?');
+          params.push(email);
+        }
+        if (name && !user.name) {
+          updates.push('name = ?');
+          params.push(name);
+        }
+        
+        if (updates.length > 0) {
+          params.push(user.id);
+          await query(
+            `UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
+            params
+          );
+        }
+      }
+    }
+    
+    // Generate tokens
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+    
+    // Store refresh token
+    const tokenHash = await hashRefreshToken(refreshToken);
+    const expiresAt = getRefreshTokenExpiry();
+    
+    await query(
+      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
+      [user.id, tokenHash, expiresAt]
+    );
+    
+    // Update last login
+    await query(
+      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
+      [user.id]
+    );
+    
+    // Log audit
+    await query(
+      'INSERT INTO audit_logs (user_id, action, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)',
+      [user.id, isNewUser ? 'apple_signup' : 'apple_login', req.ip, req.get('user-agent'), JSON.stringify({ isNewUser })]
+    );
+    
+    delete user.password_hash;
+    
+    res.json(successResponse({
+      user,
+      accessToken,
+      refreshToken
+    }));
+  } catch (error) {
+    console.error('Apple login error:', error);
+    res.status(500).json(
+      errorResponse(ErrorCodes.SERVER_ERROR, 'Apple girişi başarısız')
+    );
+  }
+}
+
+/**
+ * Facebook Login
+ */
+async function facebookLogin(req, res) {
+  try {
+    const { accessToken: fbAccessToken } = req.body;
+    
+    // Verify Facebook access token
+    const facebookUser = await verifyFacebookToken(fbAccessToken);
+    
+    if (!facebookUser) {
+      return res.status(401).json(
+        errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Facebook token doğrulanamadı')
+      );
+    }
+    
+    // Check if user exists
+    let users = await query(
+      'SELECT * FROM users WHERE auth_provider = ? AND external_auth_id = ?',
+      ['facebook', facebookUser.sub]
+    );
+    
+    let user;
+    let isNewUser = false;
+    
+    if (users.length === 0) {
+      // Create new user
+      isNewUser = true;
+      const userId = uuidv4();
+      
+      await query(
+        `INSERT INTO users (id, email, name, photo_url, auth_provider, external_auth_id, trial_started_at) 
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [userId, facebookUser.email, facebookUser.name, facebookUser.picture, 'facebook', facebookUser.sub]
+      );
+      
+      // Create user stats
+      await query(
+        'INSERT INTO user_stats (user_id) VALUES (?)',
+        [userId]
+      );
+      
+      user = {
+        id: userId,
+        email: facebookUser.email,
+        name: facebookUser.name,
+        photo_url: facebookUser.picture,
+        auth_provider: 'facebook',
+        is_premium: false,
+        is_anonymous: false,
+        trial_started_at: new Date()
+      };
+    } else {
+      user = users[0];
+    }
+    
+    // Generate JWT tokens
+    const jwtAccessToken = generateAccessToken(user.id);
+    const jwtRefreshToken = generateRefreshToken(user.id);
+    
+    // Store refresh token
+    const tokenHash = await hashRefreshToken(jwtRefreshToken);
+    const expiresAt = getRefreshTokenExpiry();
+    
+    await query(
+      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
+      [user.id, tokenHash, expiresAt]
+    );
+    
+    // Update last login
+    await query(
+      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
+      [user.id]
+    );
+    
+    // Log audit
+    await query(
+      'INSERT INTO audit_logs (user_id, action, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)',
+      [user.id, isNewUser ? 'facebook_signup' : 'facebook_login', req.ip, req.get('user-agent'), JSON.stringify({ isNewUser })]
+    );
+    
+    delete user.password_hash;
+    
+    res.json(successResponse({
+      user,
+      accessToken: jwtAccessToken,
+      refreshToken: jwtRefreshToken
+    }));
+  } catch (error) {
+    console.error('Facebook login error:', error);
+    res.status(500).json(
+      errorResponse(ErrorCodes.SERVER_ERROR, 'Facebook girişi başarısız')
     );
   }
 }
@@ -382,6 +602,8 @@ async function logout(req, res) {
 module.exports = {
   login,
   googleLogin,
+  appleLogin,
+  facebookLogin,
   anonymousLogin,
   refreshToken,
   logout

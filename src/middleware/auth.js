@@ -118,6 +118,19 @@ async function optionalAuth(req, res, next) {
       return next();
     }
     
+    // TEST MODE: Handle demo token
+    if (token === 'demo-token-user-demo-001') {
+      const users = await query(
+        'SELECT id, email, name, is_premium, premium_expires_at, trial_started_at, is_anonymous FROM users WHERE id = ?',
+        ['user-demo-001']
+      );
+      
+      if (users.length > 0) {
+        req.user = users[0];
+        return next();
+      }
+    }
+    
     const decoded = verifyAccessToken(token);
     const users = await query(
       'SELECT id, email, name, is_premium, premium_expires_at, trial_started_at FROM users WHERE id = ?',

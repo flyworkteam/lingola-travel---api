@@ -27,12 +27,11 @@ router.get('/stats', authenticateToken, profileController.getStats);
 router.put('/onboarding',
   authenticateToken,
   [
-    body('native_language').optional().isString(),
-    body('target_languages').optional().isString(),
-    body('learning_goal').optional().isString(),
-    body('daily_study_time_minutes').optional().isInt({ min: 5, max: 480 }),
-    body('notification_enabled').optional().isBoolean(),
-    body('sound_enabled').optional().isBoolean()
+    body('target_language').notEmpty().isString().withMessage('Target language gerekli'),
+    body('profession').optional().isString(),
+    body('english_level').optional().isString(),
+    body('daily_goal').optional().isString(),
+    body('daily_goal_minutes').optional().isInt({ min: 5, max: 480 })
   ],
   handleValidationErrors,
   profileController.saveOnboarding

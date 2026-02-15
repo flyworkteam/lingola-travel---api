@@ -15,11 +15,8 @@ router.get('/bookmarks', authenticateToken, libraryController.getBookmarks);
 router.post('/bookmarks',
   authenticateToken,
   [
-    body('type').isIn(['dictionary', 'phrase', 'vocabulary']),
-    body('word_id').optional().isInt(),
-    body('phrase_id').optional().isInt(),
-    body('vocabulary_id').optional().isInt(),
-    body('folder_id').optional().isInt()
+    body('item_type').isIn(['dictionary_word', 'travel_phrase', 'lesson_vocabulary']),
+    body('item_id').isString().notEmpty()
   ],
   handleValidationErrors,
   libraryController.addBookmark

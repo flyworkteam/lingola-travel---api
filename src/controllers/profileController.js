@@ -178,10 +178,10 @@ const saveOnboarding = async (req, res, next) => {
     await query(sql, [
       userId,
       target_language,
-      profession,
-      english_level,
-      daily_goal,
-      daily_goal_minutes
+      profession || null,
+      english_level || null,
+      daily_goal || null,
+      daily_goal_minutes || null
     ]);
 
     res.json(successResponse({ message: 'Tercihler kaydedildi' }));

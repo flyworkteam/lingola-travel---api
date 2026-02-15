@@ -7,8 +7,28 @@ const { successResponse, errorResponse } = require('../utils/response');
  */
 const getAllCourses = async (req, res, next) => {
   try {
-    const { category, is_free, limit = 100, offset = 0 } = req.query;
+    const { category, is_free, language, limit = 100, offset = 0 } = req.query;
     const userId = req.user?.id;
+
+    console.log('🔍 getAllCourses called');
+    console.log('   User ID:', userId);
+    console.log('   Query language param:', language);
+
+    // Get user's target language if not provided
+    let targetLanguage = language;
+    if (!targetLanguage && userId) {
+      const userOnboarding = await query(
+        'SELECT target_language FROM user_onboarding WHERE user_id = ?',
+        [userId]
+      );
+      console.log('   User onboarding query result:', userOnboarding);
+      if (userOnboarding.length > 0) {
+        targetLanguage = userOnboarding[0].target_language;
+        console.log('   ✅ Found target language from user_onboarding:', targetLanguage);
+      }
+    }
+    targetLanguage = targetLanguage || 'en';
+    console.log('   📌 Final target language:', targetLanguage);
 
     let sql, params;
 
@@ -23,13 +43,14 @@ const getAllCourses = async (req, res, next) => {
           c.total_lessons,
           c.is_free,
           c.display_order,
+          c.target_language,
           IFNULL(ucp.lessons_completed, 0) as lessons_completed,
           IFNULL(ucp.progress_percentage, 0) as progress_percentage
         FROM courses c
         LEFT JOIN user_course_progress ucp ON c.id = ucp.course_id AND ucp.user_id = ?
-        WHERE 1=1
+        WHERE c.target_language = ?
       `;
-      params = [userId];
+      params = [userId, targetLanguage];
     } else {
       sql = `
         SELECT 
@@ -41,12 +62,13 @@ const getAllCourses = async (req, res, next) => {
           c.total_lessons,
           c.is_free,
           c.display_order,
+          c.target_language,
           0 as lessons_completed,
           0 as progress_percentage
         FROM courses c
-        WHERE 1=1
+        WHERE c.target_language = ?
       `;
-      params = [];
+      params = [targetLanguage];
     }
 
     if (category) {

@@ -36,8 +36,21 @@ const getCategories = async (req, res, next) => {
 const getWordsByCategory = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { limit = 50, offset = 0 } = req.query;
+    const { limit = 50, offset = 0, language } = req.query;
     const userId = req.user?.id;
+
+    // Get user's target language if not provided
+    let targetLanguage = language;
+    if (!targetLanguage && userId) {
+      const userOnboarding = await query(
+        'SELECT target_language FROM user_onboarding WHERE user_id = ?',
+        [userId]
+      );
+      if (userOnboarding.length > 0) {
+        targetLanguage = userOnboarding[0].target_language;
+      }
+    }
+    targetLanguage = targetLanguage || 'en';
 
     let sql, params;
     
@@ -50,13 +63,15 @@ const getWordsByCategory = async (req, res, next) => {
           dw.definition,
           dw.image_url,
           dw.audio_url,
+          dw.source_language,
+          dw.target_language,
           CASE WHEN b.id IS NOT NULL THEN TRUE ELSE FALSE END as is_bookmarked
         FROM dictionary_words dw
         LEFT JOIN bookmarks b ON dw.id = b.item_id AND b.user_id = ? AND b.item_type = 'dictionary_word'
-        WHERE dw.category_id = ?
+        WHERE dw.category_id = ? AND dw.target_language = ?
         ORDER BY dw.word ASC
       `;
-      params = [userId, id];
+      params = [userId, id, targetLanguage];
     } else {
       sql = `
         SELECT 
@@ -66,12 +81,14 @@ const getWordsByCategory = async (req, res, next) => {
           dw.definition,
           dw.image_url,
           dw.audio_url,
+          dw.source_language,
+          dw.target_language,
           FALSE as is_bookmarked
         FROM dictionary_words dw
-        WHERE dw.category_id = ?
+        WHERE dw.category_id = ? AND dw.target_language = ?
         ORDER BY dw.word ASC
       `;
-      params = [id];
+      params = [id, targetLanguage];
     }
     
     const safeLimit = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
@@ -170,12 +187,27 @@ const searchWords = async (req, res, next) => {
 
 /**
  * GET /api/v1/dictionary/phrases
- * Get travel phrases with optional category filter
+ * Get travel phrases with optional category filter (filtered by target language)
  */
 const getTravelPhrases = async (req, res, next) => {
   try {
-    const { category, limit = 50, offset = 0 } = req.query;
+    const { category, limit = 50, offset = 0, language } = req.query;
     const userId = req.user?.id;
+
+    // Get user's target language from onboarding if not provided
+    let targetLanguage = language;
+    if (!targetLanguage && userId) {
+      const userOnboarding = await query(
+        'SELECT target_language FROM user_onboarding WHERE user_id = ?',
+        [userId]
+      );
+      if (userOnboarding.length > 0) {
+        targetLanguage = userOnboarding[0].target_language;
+      }
+    }
+    
+    // Default to English if no language specified
+    targetLanguage = targetLanguage || 'en';
 
     let sql, params;
     
@@ -188,12 +220,14 @@ const getTravelPhrases = async (req, res, next) => {
           tp.english_text,
           tp.translation,
           tp.audio_url,
+          tp.source_language,
+          tp.target_language,
           CASE WHEN b.id IS NOT NULL THEN TRUE ELSE FALSE END as is_bookmarked
         FROM travel_phrases tp
         LEFT JOIN bookmarks b ON tp.id = b.item_id AND b.user_id = ? AND b.item_type = 'travel_phrase'
-        WHERE 1=1
+        WHERE tp.target_language = ?
       `;
-      params = [userId];
+      params = [userId, targetLanguage];
     } else {
       sql = `
         SELECT 
@@ -203,11 +237,13 @@ const getTravelPhrases = async (req, res, next) => {
           tp.english_text,
           tp.translation,
           tp.audio_url,
+          tp.source_language,
+          tp.target_language,
           FALSE as is_bookmarked
         FROM travel_phrases tp
-        WHERE 1=1
+        WHERE tp.target_language = ?
       `;
-      params = [];
+      params = [targetLanguage];
     }
 
     if (category) {
@@ -223,7 +259,11 @@ const getTravelPhrases = async (req, res, next) => {
 
     const phrases = await query(sql, params);
 
-    res.json(successResponse({ phrases, total: phrases.length }));
+    res.json(successResponse({ 
+      phrases, 
+      total: phrases.length,
+      language: targetLanguage 
+    }));
   } catch (error) {
     console.error('Get travel phrases error:', error);
     next(error);

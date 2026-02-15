@@ -36,30 +36,22 @@ router.post('/google',
 /**
  * POST /auth/apple
  * Apple Sign-In
- * TODO: Implement Apple authentication controller
  */
 router.post('/apple',
   authLimiter,
   [
-    body('identityToken').notEmpty().withMessage('Apple identity token gerekli')
+    body('identityToken').notEmpty().withMessage('Apple identity token gerekli'),
+    body('authorizationCode').optional(),
+    body('email').optional().isEmail(),
+    body('name').optional().isString()
   ],
   handleValidationErrors,
-  (req, res) => {
-    res.status(501).json({
-      success: false,
-      data: null,
-      error: {
-        code: 'NOT_IMPLEMENTED',
-        message: 'Apple login will be implemented after store approval'
-      }
-    });
-  }
+  authController.appleLogin
 );
 
 /**
  * POST /auth/facebook
  * Facebook Login
- * TODO: Implement Facebook authentication controller
  */
 router.post('/facebook',
   authLimiter,
@@ -67,16 +59,7 @@ router.post('/facebook',
     body('accessToken').notEmpty().withMessage('Facebook access token gerekli')
   ],
   handleValidationErrors,
-  (req, res) => {
-    res.status(501).json({
-      success: false,
-      data: null,
-      error: {
-        code: 'NOT_IMPLEMENTED',
-        message: 'Facebook login will be implemented after store approval'
-      }
-    });
-  }
+  authController.facebookLogin
 );
 
 /**
