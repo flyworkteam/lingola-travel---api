@@ -21,10 +21,20 @@ const getLessonById = async (req, res, next) => {
           c.category as course_category,
           c.is_free as course_is_free,
           c.target_language as course_target_language,
-          IFNULL(ulp.status, 'not_started') as user_status,
-          IFNULL(ulp.progress_percentage, 0) as user_progress,
-          IFNULL(ulp.time_spent_seconds, 0) as time_spent,
-          IFNULL(ulp.completed_at, NULL) as completed_at
+          CASE 
+            WHEN ulp.completed = 1 THEN 'completed'
+            WHEN ulp.current_step > 1 THEN 'in_progress'
+            ELSE 'not_started'
+          END as user_status,
+          CASE 
+            WHEN ulp.completed = 1 THEN 100
+            WHEN ulp.current_step > 0 THEN ROUND((ulp.current_step / l.total_steps) * 100)
+            ELSE 0
+          END as user_progress,
+          IFNULL(ulp.current_step, 0) as current_step,
+          IFNULL(ulp.score, 0) as score,
+          IFNULL(ulp.xp_earned, 0) as xp_earned,
+          ulp.completed_at as completed_at
         FROM lessons l
         INNER JOIN courses c ON l.course_id = c.id
         LEFT JOIN user_lesson_progress ulp ON l.id = ulp.lesson_id AND ulp.user_id = ?
@@ -41,7 +51,9 @@ const getLessonById = async (req, res, next) => {
           c.target_language as course_target_language,
           'not_started' as user_status,
           0 as user_progress,
-          0 as time_spent,
+          0 as current_step,
+          0 as score,
+          0 as xp_earned,
           NULL as completed_at
         FROM lessons l
         INNER JOIN courses c ON l.course_id = c.id
@@ -111,22 +123,17 @@ const updateLessonProgress = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { progress_percentage, time_spent_seconds } = req.body;
-
-    // Validate input
-    if (progress_percentage < 0 || progress_percentage > 100) {
-      return res.status(400).json(errorResponse('INVALID_INPUT', 'İlerleme 0-100 arasında olmalı'));
-    }
+    const { current_step, completed, score, xp_earned } = req.body;
 
     // Check if lesson exists
-    const lessonSql = 'SELECT id, course_id FROM lessons WHERE id = ?';
+    const lessonSql = 'SELECT id, course_id, total_steps FROM lessons WHERE id = ?';
     const lessons = await query(lessonSql, [id]);
 
     if (lessons.length === 0) {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Ders bulunamadı'));
     }
 
-    const courseId = lessons[0].course_id;
+    const lesson = lessons[0];
 
     // Check if progress record exists
     const existingSql = 'SELECT id FROM user_lesson_progress WHERE user_id = ? AND lesson_id = ?';
@@ -136,35 +143,54 @@ const updateLessonProgress = async (req, res, next) => {
       // Update existing progress
       const updateSql = `
         UPDATE user_lesson_progress 
-        SET progress_percentage = ?, 
-            time_spent_seconds = time_spent_seconds + ?,
-            status = CASE 
-              WHEN ? >= 100 THEN 'completed'
-              WHEN ? > 0 THEN 'in_progress'
-              ELSE status
+        SET current_step = COALESCE(?, current_step),
+            completed = COALESCE(?, completed),
+            score = COALESCE(?, score),
+            xp_earned = COALESCE(?, xp_earned),
+            completed_at = CASE 
+              WHEN COALESCE(?, completed) = 1 AND completed_at IS NULL THEN NOW() 
+              ELSE completed_at 
             END,
-            completed_at = CASE WHEN ? >= 100 THEN NOW() ELSE completed_at END,
-            last_accessed_at = NOW()
+            updated_at = NOW()
         WHERE id = ?
       `;
-      await query(updateSql, [progress_percentage, time_spent_seconds || 0, progress_percentage, progress_percentage, progress_percentage, existing[0].id]);
+      await query(updateSql, [
+        current_step, 
+        completed, 
+        score, 
+        xp_earned, 
+        completed, 
+        existing[0].id
+      ]);
     } else {
       // Insert new progress
       const insertSql = `
-        INSERT INTO user_lesson_progress (user_id, lesson_id, progress_percentage, time_spent_seconds, status, last_accessed_at, completed_at)
-        VALUES (?, ?, ?, ?, ?, NOW(), ?)
+        INSERT INTO user_lesson_progress (
+          user_id, 
+          lesson_id, 
+          current_step, 
+          completed, 
+          score, 
+          xp_earned, 
+          completed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `;
-      const status = progress_percentage >= 100 ? 'completed' : progress_percentage > 0 ? 'in_progress' : 'not_started';
-      const completedAt = progress_percentage >= 100 ? new Date() : null;
-      
-      await query(insertSql, [userId, id, progress_percentage, time_spent_seconds || 0, status, completedAt]);
+      const completedAt = completed ? new Date() : null;
+      await query(insertSql, [
+        userId, 
+        id, 
+        current_step || 1, 
+        completed || 0, 
+        score || 0, 
+        xp_earned || 0, 
+        completedAt
+      ]);
     }
 
     // Update course progress
+    const courseId = lesson.course_id;
     await updateCourseProgress(userId, courseId);
-
-    // Update user stats
-    await updateUserStats(userId, time_spent_seconds || 0);
 
     res.json(successResponse({ message: 'İlerleme kaydedildi' }));
   } catch (error) {

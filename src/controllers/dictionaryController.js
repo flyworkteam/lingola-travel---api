@@ -58,6 +58,7 @@ const getWordsByCategory = async (req, res, next) => {
       sql = `
         SELECT 
           dw.id,
+          dw.category_id,
           dw.word,
           dw.translation,
           dw.definition,
@@ -76,6 +77,7 @@ const getWordsByCategory = async (req, res, next) => {
       sql = `
         SELECT 
           dw.id,
+          dw.category_id,
           dw.word,
           dw.translation,
           dw.definition,

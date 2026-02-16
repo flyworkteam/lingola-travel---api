@@ -12,8 +12,10 @@ router.get('/:id', optionalAuth, lessonsController.getLessonById);
 router.post('/:id/progress',
   authenticateToken,
   [
-    body('progress_percentage').isInt({ min: 0, max: 100 }),
-    body('time_spent_seconds').optional().isInt({ min: 0 })
+    body('current_step').optional().isInt({ min: 0 }),
+    body('completed').optional().isBoolean(),
+    body('score').optional().isInt({ min: 0, max: 100 }),
+    body('xp_earned').optional().isInt({ min: 0 })
   ],
   handleValidationErrors,
   lessonsController.updateLessonProgress
@@ -23,7 +25,8 @@ router.post('/:id/progress',
 router.post('/:id/complete',
   authenticateToken,
   [
-    body('time_spent_seconds').optional().isInt({ min: 0 })
+    body('score').optional().isInt({ min: 0, max: 100 }),
+    body('xp_earned').optional().isInt({ min: 0 })
   ],
   handleValidationErrors,
   lessonsController.completeLesson

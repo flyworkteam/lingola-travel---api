@@ -225,14 +225,31 @@ const getCourseLessons = async (req, res, next) => {
       lessonsSql = `
         SELECT 
           l.id,
+          l.course_id,
           l.title,
           l.description,
+          l.example_sentence,
+          l.key_vocabulary_term,
           l.lesson_order,
           l.image_url,
           l.audio_url,
-          IFNULL(ulp.status, 'not_started') as status,
-          IFNULL(ulp.progress_percentage, 0) as progress_percentage,
-          IFNULL(ulp.completed_at, NULL) as completed_at
+          l.total_steps,
+          l.target_language,
+          l.created_at,
+          l.updated_at,
+          CASE 
+            WHEN ulp.completed = 1 THEN 'completed'
+            WHEN ulp.current_step > 1 THEN 'in_progress'
+            ELSE 'not_started'
+          END as user_status,
+          CASE 
+            WHEN ulp.completed = 1 THEN 100
+            WHEN ulp.current_step > 0 THEN ROUND((ulp.current_step / l.total_steps) * 100)
+            ELSE 0
+          END as user_progress,
+          IFNULL(ulp.current_step, 0) as current_step,
+          IFNULL(ulp.score, 0) as score,
+          ulp.completed_at
         FROM lessons l
         LEFT JOIN user_lesson_progress ulp ON l.id = ulp.lesson_id AND ulp.user_id = ?
         WHERE l.course_id = ?
@@ -243,13 +260,22 @@ const getCourseLessons = async (req, res, next) => {
       lessonsSql = `
         SELECT 
           l.id,
+          l.course_id,
           l.title,
           l.description,
+          l.example_sentence,
+          l.key_vocabulary_term,
           l.lesson_order,
           l.image_url,
           l.audio_url,
-          'not_started' as status,
-          0 as progress_percentage,
+          l.total_steps,
+          l.target_language,
+          l.created_at,
+          l.updated_at,
+          'not_started' as user_status,
+          0 as user_progress,
+          0 as current_step,
+          0 as score,
           NULL as completed_at
         FROM lessons l
         WHERE l.course_id = ?
