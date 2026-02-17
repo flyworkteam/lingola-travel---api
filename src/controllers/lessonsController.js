@@ -21,6 +21,7 @@ const getLessonById = async (req, res, next) => {
           c.category as course_category,
           c.is_free as course_is_free,
           c.target_language as course_target_language,
+          c.image_url as course_image_url,
           CASE 
             WHEN ulp.completed = 1 THEN 'completed'
             WHEN ulp.current_step > 1 THEN 'in_progress'
@@ -49,6 +50,7 @@ const getLessonById = async (req, res, next) => {
           c.category as course_category,
           c.is_free as course_is_free,
           c.target_language as course_target_language,
+          c.image_url as course_image_url,
           'not_started' as user_status,
           0 as user_progress,
           0 as current_step,
