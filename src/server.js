@@ -19,6 +19,9 @@ const API_VERSION = process.env.API_VERSION || 'v1';
 // Middleware
 // ===================================
 
+// Trust proxy (for rate limiter to work correctly)
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 
