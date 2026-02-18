@@ -17,3 +17,7 @@ build/
 keys/
 *.pem
 *.p8
+
+# Apple Sign In Keys
+keys/
+*.p8
