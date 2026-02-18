@@ -9,6 +9,7 @@ const dictionaryRoutes = require('./dictionary');
 const profileRoutes = require('./profile');
 const libraryRoutes = require('./library');
 const travelPhrasesRoutes = require('./travelPhrases');
+const notificationsRoutes = require('./notifications');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -18,6 +19,7 @@ router.use('/dictionary', dictionaryRoutes);
 router.use('/profile', profileRoutes);
 router.use('/library', libraryRoutes);
 router.use('/travel-phrases', travelPhrasesRoutes);
+router.use('/notifications', notificationsRoutes);
 
 // API info endpoint
 router.get('/', (req, res) => {

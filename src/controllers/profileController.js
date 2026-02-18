@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { query, transaction } = require('../config/database');
 const { successResponse, errorResponse } = require('../utils/response');
 
 /**
@@ -239,10 +239,44 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+/**
+ * DELETE /api/v1/profile
+ * Delete user account permanently
+ */
+const deleteAccount = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    // Use transaction helper for safe deletion
+    await transaction(async (connection) => {
+      // Delete user data from all related tables (connection.query returns promise directly)
+      await connection.query('DELETE FROM refresh_tokens WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM user_onboarding WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM user_stats WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM user_course_progress WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM user_lesson_progress WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM bookmarks WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM notifications WHERE user_id = ?', [userId]);
+      
+      // Finally delete the user
+      await connection.query('DELETE FROM users WHERE id = ?', [userId]);
+    });
+
+    res.json(successResponse({ 
+      message: 'Hesabınız başarıyla silindi',
+      deleted: true 
+    }));
+  } catch (error) {
+    console.error('Delete account error:', error);
+    next(error);
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
   getStats,
   saveOnboarding,
-  changePassword
+  changePassword,
+  deleteAccount
 };

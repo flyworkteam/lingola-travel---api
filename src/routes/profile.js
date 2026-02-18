@@ -48,4 +48,7 @@ router.post('/change-password',
   profileController.changePassword
 );
 
+// DELETE /api/v1/profile - Delete account permanently
+router.delete('/', authenticateToken, profileController.deleteAccount);
+
 module.exports = router;
