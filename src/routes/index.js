@@ -10,6 +10,7 @@ const profileRoutes = require('./profile');
 const libraryRoutes = require('./library');
 const travelPhrasesRoutes = require('./travelPhrases');
 const notificationsRoutes = require('./notifications');
+const policiesRoutes = require('./policies');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -20,6 +21,7 @@ router.use('/profile', profileRoutes);
 router.use('/library', libraryRoutes);
 router.use('/travel-phrases', travelPhrasesRoutes);
 router.use('/notifications', notificationsRoutes);
+router.use('/policies', policiesRoutes);
 
 // API info endpoint
 router.get('/', (req, res) => {
@@ -35,7 +37,8 @@ router.get('/', (req, res) => {
         dictionary: '/api/v1/dictionary',
         travelPhrases: '/api/v1/travel-phrases',
         profile: '/api/v1/profile',
-        library: '/api/v1/library'
+        library: '/api/v1/library',
+        policies: '/api/v1/policies'
       }
     }
   });
