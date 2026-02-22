@@ -16,6 +16,38 @@ const { successResponse, errorResponse, ErrorCodes } = require('../utils/respons
 const { verifyGoogleToken, verifyAppleToken, verifyFacebookToken } = require('../utils/socialAuth');
 
 /**
+ * Helper: Create default library folders for new users
+ */
+async function createDefaultLibraryFolders(userId) {
+  try {
+    const defaultFolders = [
+      { name: 'My Airport Essentials', icon: 'assets/icons/airport.png', color: '#E3F2FD' },
+      { name: 'My Hotel Essentials', icon: 'assets/icons/accommodation.png', color: '#FFE4CC' },
+      { name: 'Transport Essentials', icon: 'assets/icons/transportation.png', color: '#FFF9C4' },
+      { name: 'My Food Essentials', icon: 'assets/icons/food_drink.png', color: '#FFCDD2' },
+      { name: 'My Shopping Essentials', icon: 'assets/icons/shopping.png', color: '#C8E6C9' },
+      { name: 'Culture Essentials', icon: 'assets/icons/culture.png', color: '#B3E5FC' },
+      { name: 'Meeting Essentials', icon: 'assets/icons/meeting.png', color: '#D7CCC8' },
+      { name: 'Sport Essentials', icon: 'assets/icons/sport.png', color: '#F8BBD0' },
+      { name: 'Health Essentials', icon: 'assets/icons/health.png', color: '#C5E1A5' },
+      { name: 'Business Essentials', icon: 'assets/icons/business.png', color: '#BBDEFB' }
+    ];
+
+    for (const folder of defaultFolders) {
+      await query(
+        'INSERT INTO library_folders (user_id, name, icon, color, item_count) VALUES (?, ?, ?, ?, 0)',
+        [userId, folder.name, folder.icon, folder.color]
+      );
+    }
+    
+    console.log(`✅ Created ${defaultFolders.length} default folders for user ${userId}`);
+  } catch (error) {
+    console.error('Error creating default library folders:', error);
+    // Don't throw - this shouldn't break registration
+  }
+}
+
+/**
  * Email/Password Login
  */
 async function login(req, res) {
@@ -127,6 +159,9 @@ async function googleLogin(req, res) {
         [userId]
       );
       
+      // Create default library folders
+      await createDefaultLibraryFolders(userId);
+      
       user = {
         id: userId,
         email: googleUser.email,
@@ -227,6 +262,9 @@ async function appleLogin(req, res) {
         'INSERT INTO user_stats (user_id) VALUES (?)',
         [userId]
       );
+      
+      // Create default library folders
+      await createDefaultLibraryFolders(userId);
       
       user = {
         id: userId,
@@ -347,6 +385,9 @@ async function facebookLogin(req, res) {
         [userId]
       );
       
+      // Create default library folders
+      await createDefaultLibraryFolders(userId);
+      
       user = {
         id: userId,
         email: facebookUser.email,
@@ -439,6 +480,9 @@ async function anonymousLogin(req, res) {
         'INSERT INTO user_stats (user_id) VALUES (?)',
         [userId]
       );
+      
+      // Create default library folders
+      await createDefaultLibraryFolders(userId);
       
       user = {
         id: userId,

@@ -42,7 +42,7 @@ const getProfile = async (req, res, next) => {
     const user = users[0];
 
     // Calculate trial status
-    const trialEnded = user.trial_started_at &&
+    const trialEnded = user.trial_started_at && 
       (new Date() - new Date(user.trial_started_at)) > (24 * 60 * 60 * 1000);
 
     res.json(successResponse({
@@ -115,8 +115,7 @@ const getStats = async (req, res, next) => {
         us.total_xp,
         us.last_activity_date,
         (SELECT COUNT(*) FROM user_course_progress WHERE user_id = ? AND progress_percentage >= 100) as courses_completed,
-        (SELECT COUNT(*) FROM bookmarks WHERE user_id = ?) as saved_words_count,
-        (SELECT COUNT(*) FROM lessons) as total_lessons_count
+        (SELECT COUNT(*) FROM bookmarks WHERE user_id = ?) as saved_words_count
       FROM user_stats us
       WHERE us.user_id = ?
     `;
@@ -127,7 +126,7 @@ const getStats = async (req, res, next) => {
       // Create default stats if not exists
       const createSql = 'INSERT INTO user_stats (user_id) VALUES (?)';
       await query(createSql, [userId]);
-
+      
       return res.json(successResponse({
         stats: {
           current_streak: 0,
@@ -175,7 +174,7 @@ const saveOnboarding = async (req, res, next) => {
         daily_goal = VALUES(daily_goal),
         daily_goal_minutes = VALUES(daily_goal_minutes)
     `;
-
+    
     await query(sql, [
       userId,
       target_language,
@@ -258,14 +257,14 @@ const deleteAccount = async (req, res, next) => {
       await connection.query('DELETE FROM user_lesson_progress WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM bookmarks WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM notifications WHERE user_id = ?', [userId]);
-
+      
       // Finally delete the user
       await connection.query('DELETE FROM users WHERE id = ?', [userId]);
     });
 
-    res.json(successResponse({
+    res.json(successResponse({ 
       message: 'Hesabınız başarıyla silindi',
-      deleted: true
+      deleted: true 
     }));
   } catch (error) {
     console.error('Delete account error:', error);

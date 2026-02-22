@@ -105,12 +105,14 @@ async function startServer() {
       process.exit(1);
     }
     
-    // Start server
-    app.listen(PORT, () => {
+    // Start server (0.0.0.0 allows access from local network for mobile devices)
+    app.listen(PORT, '0.0.0.0', () => {
+      const localIp = '192.168.0.26'; // Your local network IP
       console.log('\n🚀 Lingola Travel Backend Server');
       console.log('================================');
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🌐 Server running on: http://localhost:${PORT}`);
+      console.log(`🌐 Server running on: http://0.0.0.0:${PORT}`);
+      console.log(`📱 Mobile Access: http://${localIp}:${PORT}`);
       console.log(`📡 API Base URL: http://localhost:${PORT}/api/${API_VERSION}`);
       console.log(`💚 Health check: http://localhost:${PORT}/health`);
       console.log('================================\n');

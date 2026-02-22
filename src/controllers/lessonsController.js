@@ -12,7 +12,7 @@ const getLessonById = async (req, res, next) => {
 
     // Get lesson details
     let lessonSql, lessonParams;
-    
+
     if (userId) {
       lessonSql = `
         SELECT 
@@ -76,12 +76,12 @@ const getLessonById = async (req, res, next) => {
     if (lesson.course_is_free === 0 && userId) {
       const userSql = 'SELECT is_premium, trial_started_at FROM users WHERE id = ?';
       const users = await query(userSql, [userId]);
-      
+
       if (users.length > 0) {
         const user = users[0];
-        const trialEnded = user.trial_started_at && 
+        const trialEnded = user.trial_started_at &&
           (new Date() - new Date(user.trial_started_at)) > (24 * 60 * 60 * 1000);
-        
+
         if (!user.is_premium && trialEnded) {
           return res.status(403).json(errorResponse('PREMIUM_REQUIRED', 'Bu ders premium üyelik gerektirir'));
         }
@@ -157,11 +157,11 @@ const updateLessonProgress = async (req, res, next) => {
         WHERE id = ?
       `;
       await query(updateSql, [
-        current_step, 
-        completed, 
-        score, 
-        xp_earned, 
-        completed, 
+        current_step,
+        completed,
+        score,
+        xp_earned,
+        completed,
         existing[0].id
       ]);
     } else {
@@ -180,12 +180,12 @@ const updateLessonProgress = async (req, res, next) => {
       `;
       const completedAt = completed ? new Date() : null;
       await query(insertSql, [
-        userId, 
-        id, 
-        current_step || 1, 
-        completed || 0, 
-        score || 0, 
-        xp_earned || 0, 
+        userId,
+        id,
+        current_step || 1,
+        completed || 0,
+        score || 0,
+        xp_earned || 0,
         completedAt
       ]);
     }
@@ -209,48 +209,50 @@ const completeLesson = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { time_spent_seconds = 0 } = req.body;
+    const { score = 100 } = req.body;
 
     // Check if lesson exists
-    const lessonSql = 'SELECT id, course_id FROM lessons WHERE id = ?';
+    const lessonSql = 'SELECT id, course_id, total_steps FROM lessons WHERE id = ?';
     const lessons = await query(lessonSql, [id]);
 
     if (lessons.length === 0) {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Ders bulunamadı'));
     }
 
-    const courseId = lessons[0].course_id;
+    const lesson = lessons[0];
+    const courseId = lesson.course_id;
 
     // Check if already completed
-    const existingSql = 'SELECT id, status FROM user_lesson_progress WHERE user_id = ? AND lesson_id = ?';
+    const existingSql = 'SELECT id FROM user_lesson_progress WHERE user_id = ? AND lesson_id = ?';
     const existing = await query(existingSql, [userId, id]);
 
     if (existing.length > 0) {
-      // Update to completed
+      // Update to completed using correct column names
       const updateSql = `
         UPDATE user_lesson_progress 
-        SET status = 'completed', 
-            progress_percentage = 100,
-            time_spent_seconds = time_spent_seconds + ?,
-            completed_at = NOW(),
-            last_accessed_at = NOW()
+        SET completed = 1,
+            current_step = ?,
+            score = ?,
+            xp_earned = 10,
+            completed_at = CASE WHEN completed_at IS NULL THEN NOW() ELSE completed_at END,
+            updated_at = NOW()
         WHERE id = ?
       `;
-      await query(updateSql, [time_spent_seconds, existing[0].id]);
+      await query(updateSql, [lesson.total_steps, score, existing[0].id]);
     } else {
-      // Insert as completed
+      // Insert as completed using correct column names
       const insertSql = `
-        INSERT INTO user_lesson_progress (user_id, lesson_id, status, progress_percentage, time_spent_seconds, completed_at, last_accessed_at)
-        VALUES (?, ?, 'completed', 100, ?, NOW(), NOW())
+        INSERT INTO user_lesson_progress (user_id, lesson_id, completed, current_step, score, xp_earned, completed_at)
+        VALUES (?, ?, 1, ?, ?, 10, NOW())
       `;
-      await query(insertSql, [userId, id, time_spent_seconds]);
+      await query(insertSql, [userId, id, lesson.total_steps, score]);
     }
 
     // Update course progress
     await updateCourseProgress(userId, courseId);
 
     // Update user stats
-    await updateUserStats(userId, time_spent_seconds);
+    await updateUserStats(userId, 0);
 
     res.json(successResponse({ message: 'Ders tamamlandı', xp_earned: 10 }));
   } catch (error) {
@@ -265,12 +267,12 @@ const completeLesson = async (req, res, next) => {
 async function updateCourseProgress(userId, courseId) {
   const sql = `
     SELECT COUNT(*) as total_lessons,
-           SUM(CASE WHEN ulp.status = 'completed' THEN 1 ELSE 0 END) as lessons_completed
+           SUM(CASE WHEN ulp.completed = 1 THEN 1 ELSE 0 END) as lessons_completed
     FROM lessons l
     LEFT JOIN user_lesson_progress ulp ON l.id = ulp.lesson_id AND ulp.user_id = ?
     WHERE l.course_id = ?
   `;
-  
+
   const results = await query(sql, [userId, courseId]);
   const { total_lessons, lessons_completed } = results[0];
   const progressPercentage = total_lessons > 0 ? (lessons_completed / total_lessons) * 100 : 0;
@@ -297,30 +299,164 @@ async function updateCourseProgress(userId, courseId) {
 /**
  * Helper: Update user stats (total time, lessons completed)
  */
-async function updateUserStats(userId, timeSpentSeconds) {
-  const existingSql = 'SELECT id FROM user_stats WHERE user_id = ?';
-  const existing = await query(existingSql, [userId]);
+async function updateUserStats(userId, timeSpentSeconds = 0) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-  if (existing.length > 0) {
-    const updateSql = `
-      UPDATE user_stats 
-      SET total_study_time_minutes = total_study_time_minutes + ?,
-          lessons_completed = lessons_completed + 1,
-          updated_at = NOW()
-      WHERE id = ?
-    `;
-    await query(updateSql, [Math.floor(timeSpentSeconds / 60), existing[0].id]);
-  } else {
-    const insertSql = `
-      INSERT INTO user_stats (user_id, total_study_time_minutes, lessons_completed)
-      VALUES (?, ?, 1)
-    `;
-    await query(insertSql, [userId, Math.floor(timeSpentSeconds / 60)]);
+    const statsSql = 'SELECT * FROM user_stats WHERE user_id = ?';
+    const statsResult = await query(statsSql, [userId]);
+
+    if (statsResult.length === 0) {
+      // First time completion
+      const insertSql = `
+        INSERT INTO user_stats 
+        (user_id, current_streak, longest_streak, total_lessons_completed, total_xp, last_activity_date)
+        VALUES (?, 1, 1, 1, 20, ?)
+      `;
+      await query(insertSql, [userId, today]);
+    } else {
+      const stats = statsResult[0];
+      let { current_streak, longest_streak, total_lessons_completed, total_xp, last_activity_date } = stats;
+
+      // Convert last_activity_date to string if it's a Date object
+      if (last_activity_date instanceof Date) {
+        last_activity_date = last_activity_date.toISOString().split('T')[0];
+      }
+
+      // Check streak
+      if (last_activity_date === today) {
+        // Already active today, don't increment streak
+      } else if (last_activity_date === yesterday) {
+        // Active yesterday, increment streak
+        current_streak += 1;
+      } else {
+        // Streak broken
+        current_streak = 1;
+      }
+
+      // Update longest streak
+      if (current_streak > longest_streak) {
+        longest_streak = current_streak;
+      }
+
+      const updateSql = `
+        UPDATE user_stats 
+        SET current_streak = ?,
+            longest_streak = ?,
+            total_lessons_completed = total_lessons_completed + 1,
+            total_xp = total_xp + 20,
+            last_activity_date = ?,
+            updated_at = NOW()
+        WHERE user_id = ?
+      `;
+      await query(updateSql, [current_streak, longest_streak, today, userId]);
+    }
+  } catch (error) {
+    console.error('Update user stats error:', error);
+    // Don't throw, let the lesson completion proceed
   }
 }
+
+/**
+ * GET /api/v1/lessons/:id/next
+ * Get next lesson after completing current one
+ */
+const getNextLesson = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    // Get current lesson info
+    const currentLessonSql = `
+      SELECT l.id, l.course_id, l.lesson_order, c.target_language, c.display_order as course_order
+      FROM lessons l
+      INNER JOIN courses c ON l.course_id = c.id
+      WHERE l.id = ?
+    `;
+    const currentLessonResult = await query(currentLessonSql, [id]);
+
+    if (currentLessonResult.length === 0) {
+      return res.status(404).json(errorResponse('NOT_FOUND', 'Mevcut ders bulunamadı'));
+    }
+
+    const currentLesson = currentLessonResult[0];
+
+    // Try to find next lesson in same course
+    const nextLessonInCourseSql = `
+      SELECT l.id, l.title, l.lesson_order, l.course_id, c.title as course_title, c.category
+      FROM lessons l
+      INNER JOIN courses c ON l.course_id = c.id
+      WHERE l.course_id = ? AND l.lesson_order > ?
+      ORDER BY l.lesson_order ASC
+      LIMIT 1
+    `;
+    const nextLessonInCourse = await query(nextLessonInCourseSql, [currentLesson.course_id, currentLesson.lesson_order]);
+
+    if (nextLessonInCourse.length > 0) {
+      // Found next lesson in same course
+      return res.json(successResponse({
+        nextLesson: {
+          ...nextLessonInCourse[0],
+          transition: 'same_course'
+        }
+      }));
+    }
+
+    // No more lessons in current course, find next course
+    const nextCourseSql = `
+      SELECT c.id, c.title, c.category, c.display_order
+      FROM courses c
+      WHERE c.target_language = ? AND c.display_order > ?
+      ORDER BY c.display_order ASC
+      LIMIT 1
+    `;
+    const nextCourseResult = await query(nextCourseSql, [currentLesson.target_language, currentLesson.course_order]);
+
+    if (nextCourseResult.length === 0) {
+      // No more courses available
+      return res.json(successResponse({
+        nextLesson: null,
+        message: 'Tebrikler! Tüm kursları tamamladınız! 🎉'
+      }));
+    }
+
+    const nextCourse = nextCourseResult[0];
+
+    // Get first lesson of next course
+    const firstLessonSql = `
+      SELECT l.id, l.title, l.lesson_order, l.course_id, c.title as course_title, c.category
+      FROM lessons l
+      INNER JOIN courses c ON l.course_id = c.id
+      WHERE l.course_id = ?
+      ORDER BY l.lesson_order ASC
+      LIMIT 1
+    `;
+    const firstLessonResult = await query(firstLessonSql, [nextCourse.id]);
+
+    if (firstLessonResult.length === 0) {
+      // Next course has no lessons
+      return res.json(successResponse({
+        nextLesson: null,
+        message: 'Bir sonraki kursun henüz dersleri yok'
+      }));
+    }
+
+    res.json(successResponse({
+      nextLesson: {
+        ...firstLessonResult[0],
+        transition: 'new_course'
+      }
+    }));
+  } catch (error) {
+    console.error('Get next lesson error:', error);
+    next(error);
+  }
+};
 
 module.exports = {
   getLessonById,
   updateLessonProgress,
-  completeLesson
+  completeLesson,
+  getNextLesson
 };

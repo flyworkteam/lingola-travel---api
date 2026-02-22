@@ -8,6 +8,9 @@ const { handleValidationErrors } = require('../middleware/validator');
 // GET /api/v1/lessons/:id - Get lesson details
 router.get('/:id', optionalAuth, lessonsController.getLessonById);
 
+// GET /api/v1/lessons/:id/next - Get next lesson
+router.get('/:id/next', optionalAuth, lessonsController.getNextLesson);
+
 // POST /api/v1/lessons/:id/progress - Update lesson progress
 router.post('/:id/progress',
   authenticateToken,

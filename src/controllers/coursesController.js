@@ -82,7 +82,7 @@ const getAllCourses = async (req, res, next) => {
     }
 
     sql += ' ORDER BY c.display_order ASC, c.created_at DESC';
-    
+
     // Add LIMIT and OFFSET without placeholders (MySQL doesn't handle them well in prepared statements)
     const safeLimit = Math.max(1, Math.min(parseInt(limit) || 100, 1000));
     const safeOffset = Math.max(0, parseInt(offset) || 0);
@@ -113,7 +113,7 @@ const getCourseById = async (req, res, next) => {
 
     // Get course details
     let courseSql, courseParams;
-    
+
     if (userId) {
       courseSql = `
         SELECT 
@@ -149,7 +149,7 @@ const getCourseById = async (req, res, next) => {
 
     // Get lessons for this course
     let lessonsSql, lessonsParams;
-    
+
     if (userId) {
       lessonsSql = `
         SELECT 
@@ -164,7 +164,7 @@ const getCourseById = async (req, res, next) => {
             WHEN ulp.completed = 1 THEN 'completed'
             WHEN ulp.current_step > 1 THEN 'in_progress'
             WHEN l.lesson_order = 1 THEN 'not_started'
-            WHEN prev_ulp.completed = 1 THEN 'not_started'
+            WHEN prev_ulp.user_id IS NOT NULL THEN 'not_started'
             ELSE 'locked'
           END as user_status,
           CASE 
@@ -239,7 +239,7 @@ const getCourseLessons = async (req, res, next) => {
 
     // Get lessons for this course
     let lessonsSql, lessonsParams;
-    
+
     if (userId) {
       lessonsSql = `
         SELECT 
@@ -260,7 +260,7 @@ const getCourseLessons = async (req, res, next) => {
             WHEN ulp.completed = 1 THEN 'completed'
             WHEN ulp.current_step > 1 THEN 'in_progress'
             WHEN l.lesson_order = 1 THEN 'not_started'
-            WHEN prev_ulp.completed = 1 THEN 'not_started'
+            WHEN prev_ulp.user_id IS NOT NULL THEN 'not_started'
             ELSE 'locked'
           END as user_status,
           CASE 

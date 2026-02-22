@@ -16,7 +16,8 @@ router.post('/bookmarks',
   authenticateToken,
   [
     body('item_type').isIn(['dictionary_word', 'travel_phrase', 'lesson_vocabulary']),
-    body('item_id').isString().notEmpty()
+    body('item_id').isString().notEmpty(),
+    body('category').optional().isString()
   ],
   handleValidationErrors,
   libraryController.addBookmark

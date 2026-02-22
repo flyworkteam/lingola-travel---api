@@ -2,6 +2,39 @@ const { query } = require('../config/database');
 const { successResponse, errorResponse } = require('../utils/response');
 
 /**
+ * Helper: Create default library folders for new users
+ */
+async function createDefaultLibraryFolders(userId) {
+  try {
+    const defaultFolders = [
+      { name: 'My Airport Essentials', icon: 'assets/icons/airport.png', color: '#E3F2FD' },
+      { name: 'My Hotel Essentials', icon: 'assets/icons/accommodation.png', color: '#FFE4CC' },
+      { name: 'Transport Essentials', icon: 'assets/icons/transportation.png', color: '#FFF9C4' },
+      { name: 'My Food Essentials', icon: 'assets/icons/food_drink.png', color: '#FFCDD2' },
+      { name: 'My Shopping Essentials', icon: 'assets/icons/shopping.png', color: '#C8E6C9' },
+      { name: 'Culture Essentials', icon: 'assets/icons/culture.png', color: '#B3E5FC' },
+      { name: 'Meeting Essentials', icon: 'assets/icons/meeting.png', color: '#D7CCC8' },
+      { name: 'Sport Essentials', icon: 'assets/icons/sport.png', color: '#F8BBD0' },
+      { name: 'Health Essentials', icon: 'assets/icons/health.png', color: '#C5E1A5' },
+      { name: 'Business Essentials', icon: 'assets/icons/business.png', color: '#BBDEFB' }
+    ];
+
+    for (const folder of defaultFolders) {
+      await query(
+        'INSERT INTO library_folders (user_id, name, icon, color, item_count) VALUES (?, ?, ?, ?, 0)',
+        [userId, folder.name, folder.icon, folder.color]
+      );
+    }
+    
+    console.log(`✅ Created ${defaultFolders.length} default folders for user ${userId}`);
+    return true;
+  } catch (error) {
+    console.error('Error creating default library folders:', error);
+    return false;
+  }
+}
+
+/**
  * GET /api/v1/library
  * Get library overview (bookmarks and folders)
  */
@@ -190,7 +223,9 @@ const getBookmarks = async (req, res, next) => {
 const addBookmark = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { item_type, item_id } = req.body;
+    const { item_type, item_id, category } = req.body;
+
+    console.log('📌 Adding bookmark:', { userId, item_type, item_id, category });
 
     // Validate type
     if (!['dictionary_word', 'travel_phrase', 'lesson_vocabulary'].includes(item_type)) {
@@ -216,6 +251,99 @@ const addBookmark = async (req, res, next) => {
     `;
 
     await query(insertSql, [userId, item_type, item_id]);
+    
+    // Also add to appropriate folder based on category
+    try {
+      // Find matching folder based on category name
+      let folderNamePattern = '%Airport%';
+      
+      if (category) {
+        const catLower = category.toLowerCase();
+        if (catLower.includes('airport') || catLower.includes('havaalani')) {
+          folderNamePattern = '%Airport%';
+        } else if (catLower.includes('hotel') || catLower.includes('accommodation') || catLower.includes('konaklama')) {
+          folderNamePattern = '%Hotel%';
+        } else if (catLower.includes('transport') || catLower.includes('ulaşım')) {
+          folderNamePattern = '%Transport%';
+        } else if (catLower.includes('food') || catLower.includes('drink') || catLower.includes('yemek')) {
+          folderNamePattern = '%Food%';
+        } else if (catLower.includes('shopping') || catLower.includes('alışveriş')) {
+          folderNamePattern = '%Shopping%';
+        } else if (catLower.includes('culture') || catLower.includes('kültür')) {
+          folderNamePattern = '%Culture%';
+        } else if (catLower.includes('meeting') || catLower.includes('görüşme')) {
+          folderNamePattern = '%Meeting%';
+        } else if (catLower.includes('sport') || catLower.includes('spor')) {
+          folderNamePattern = '%Sport%';
+        } else if (catLower.includes('health') || catLower.includes('sağlık')) {
+          folderNamePattern = '%Health%';
+        } else if (catLower.includes('business') || catLower.includes('iş')) {
+          folderNamePattern = '%Business%';
+        }
+      }
+      
+      const folders = await query(
+        'SELECT id FROM library_folders WHERE user_id = ? AND name LIKE ? ORDER BY created_at ASC LIMIT 1',
+        [userId, folderNamePattern]
+      );
+      
+      if (folders.length > 0) {
+        const folderId = folders[0].id;
+        
+        // Check if not already in folder
+        const folderItemCheck = await query(
+          'SELECT id FROM library_items WHERE folder_id = ? AND item_type = ? AND item_id = ?',
+          [folderId, item_type, item_id]
+        );
+        
+        if (folderItemCheck.length === 0) {
+          await query(
+            'INSERT INTO library_items (folder_id, item_type, item_id) VALUES (?, ?, ?)',
+            [folderId, item_type, item_id]
+          );
+          
+          // Update folder item count
+          await query(
+            'UPDATE library_folders SET item_count = item_count + 1 WHERE id = ?',
+            [folderId]
+          );
+          
+          console.log(`✅ Item automatically added to folder ${folderId} (pattern: ${folderNamePattern})`);
+        }
+      } else {
+        // Fallback to first folder if pattern doesn't match
+        const fallbackFolders = await query(
+          'SELECT id FROM library_folders WHERE user_id = ? ORDER BY created_at ASC LIMIT 1',
+          [userId]
+        );
+        
+        if (fallbackFolders.length > 0) {
+          const folderId = fallbackFolders[0].id;
+          
+          const folderItemCheck = await query(
+            'SELECT id FROM library_items WHERE folder_id = ? AND item_type = ? AND item_id = ?',
+            [folderId, item_type, item_id]
+          );
+          
+          if (folderItemCheck.length === 0) {
+            await query(
+              'INSERT INTO library_items (folder_id, item_type, item_id) VALUES (?, ?, ?)',
+              [folderId, item_type, item_id]
+            );
+            
+            await query(
+              'UPDATE library_folders SET item_count = item_count + 1 WHERE id = ?',
+              [folderId]
+            );
+            
+            console.log(`✅ Item added to fallback folder ${folderId}`);
+          }
+        }
+      }
+    } catch (folderError) {
+      console.error('Error adding to folder:', folderError);
+      // Don't fail the bookmark if folder addition fails
+    }
 
     res.json(successResponse({ message: 'Kaydedildi' }));
   } catch (error) {
@@ -272,6 +400,14 @@ const getFolders = async (req, res, next) => {
     `;
 
     const folders = await query(sql, [userId]);
+    
+    // If user has no folders, create default ones
+    if (folders.length === 0) {
+      console.log('📁 No folders found, creating defaults...');
+      await createDefaultLibraryFolders(userId);
+      // Fetch again after creating
+      folders = await query(sql, [userId]);
+    }
     
     console.log('📁 Folders result:', folders.map(f => ({ id: f.id, name: f.name, item_count: f.item_count })));
 
