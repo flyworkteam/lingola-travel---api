@@ -14,7 +14,7 @@ ADD COLUMN device_platform ENUM('ios', 'android', 'web') NULL
 COMMENT 'User device platform for push notifications' 
 AFTER onesignal_player_id;
 
--- Add index for faster lookups
+-- Add index for faster dsad
 ALTER TABLE users 
 ADD INDEX idx_onesignal_player (onesignal_player_id);
 

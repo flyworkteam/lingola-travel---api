@@ -23,3 +23,6 @@ keys/
 *.p8
 /package.json/package-lock.json
 package-lock.json
+migrations/create_policies_table.sql
+migrations/add_onesignal_columns_to_users.sql
+database/
