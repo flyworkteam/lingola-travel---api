@@ -21,3 +21,5 @@ keys/
 # Apple Sign In Keys
 keys/
 *.p8
+/package.json/package-lock.json
+package-lock.json
