@@ -96,14 +96,7 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
   try {
-    // Test database connection
-    const dbConnected = await testConnection();
-    
-    if (!dbConnected) {
-      console.error('⚠️  Database connection failed. Server will not start.');
-      console.error('Please check your .env file and ensure MySQL is running.');
-      process.exit(1);
-    }
+
     
     // Start server (0.0.0.0 allows access from local network for mobile devices)
     app.listen(PORT, '0.0.0.0', () => {

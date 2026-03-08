@@ -4,14 +4,13 @@ const { body } = require('express-validator');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const { handleValidationErrors } = require('../middleware/validator');
-const { authLimiter } = require('../middleware/rateLimiter');
 
 /**
  * POST /auth/login
  * Email/Password Login
  */
 router.post('/login',
-  authLimiter,
+
   [
     body('email').isEmail().normalizeEmail().withMessage('Geçerli bir email adresi girin'),
     body('password').notEmpty().withMessage('Şifre gerekli')
@@ -25,7 +24,7 @@ router.post('/login',
  * Google Sign-In
  */
 router.post('/google',
-  authLimiter,
+
   [
     body('idToken').notEmpty().withMessage('Google ID token gerekli')
   ],
@@ -38,7 +37,7 @@ router.post('/google',
  * Apple Sign-In
  */
 router.post('/apple',
-  authLimiter,
+
   [
     body('identityToken').notEmpty().withMessage('Apple identity token gerekli'),
     body('authorizationCode').optional(),
@@ -54,7 +53,7 @@ router.post('/apple',
  * Facebook Login
  */
 router.post('/facebook',
-  authLimiter,
+
   [
     body('accessToken').notEmpty().withMessage('Facebook access token gerekli')
   ],
@@ -67,13 +66,15 @@ router.post('/facebook',
  * Anonymous Login (Guest)
  */
 router.post('/anonymous',
-  authLimiter,
+
   [
     body('deviceId').notEmpty().withMessage('Device ID gerekli')
   ],
   handleValidationErrors,
   authController.anonymousLogin
 );
+
+router.post('/premium-status', authController.updatePremiumStatus);
 
 /**
  * POST /auth/refresh

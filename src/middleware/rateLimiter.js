@@ -7,7 +7,6 @@ const { errorResponse, ErrorCodes } = require('../utils/response');
  */
 const authLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_AUTH) || 5,
   message: errorResponse(
     ErrorCodes.RATE_LIMIT_EXCEEDED,
     'Çok fazla giriş denemesi. 15 dakika sonra tekrar deneyin.'

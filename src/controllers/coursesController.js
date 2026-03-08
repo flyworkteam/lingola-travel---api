@@ -15,7 +15,7 @@ const getAllCourses = async (req, res, next) => {
     console.log('   Query language param:', language);
 
     // Get user's target language if not provided
-    let targetLanguage = language;
+    let targetLanguage = "en";
     if (!targetLanguage && userId) {
       const userOnboarding = await query(
         'SELECT target_language FROM user_onboarding WHERE user_id = ?',

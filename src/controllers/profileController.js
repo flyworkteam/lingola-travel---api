@@ -244,13 +244,21 @@ const changePassword = async (req, res, next) => {
  * DELETE /api/v1/profile
  * Delete user account permanently
  */
+/**
+ * DELETE /api/v1/profile
+ * Delete user account permanently
+ */
 const deleteAccount = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
     // Use transaction helper for safe deletion
     await transaction(async (connection) => {
-      // Delete user data from all related tables (connection.query returns promise directly)
+      // 1. ÖNCE KULLANICIYA AİT KLASÖR İÇERİKLERİNİ VE KLASÖRLERİ SİL
+      await connection.query('DELETE FROM library_items WHERE folder_id IN (SELECT id FROM library_folders WHERE user_id = ?)', [userId]);
+      await connection.query('DELETE FROM library_folders WHERE user_id = ?', [userId]);
+
+      // 2. DİĞER BAĞLI TABLOLARI SİL
       await connection.query('DELETE FROM refresh_tokens WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM user_onboarding WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM user_stats WHERE user_id = ?', [userId]);
@@ -258,8 +266,9 @@ const deleteAccount = async (req, res, next) => {
       await connection.query('DELETE FROM user_lesson_progress WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM bookmarks WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM notifications WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM audit_logs WHERE user_id = ?', [userId]); // Logları silmeyi unutma
 
-      // Finally delete the user
+      // 3. EN SON KULLANICIYI SİL
       await connection.query('DELETE FROM users WHERE id = ?', [userId]);
     });
 
@@ -271,6 +280,7 @@ const deleteAccount = async (req, res, next) => {
     console.error('Delete account error:', error);
     next(error);
   }
+
 };
 
 module.exports = {

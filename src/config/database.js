@@ -1,51 +1,79 @@
-// Database Configuration and Connection Pool
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+const logger = require('../utils/logger');
 
-// Create connection pool
+// Create connection pool for better performance and scalability
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME || 'lingola_travel',
+  host: '5.39.8.160',
+  port: 3306,
+  user: 'flywork1_lingolaTravelUser',
+  password: 'V*HkrnhmoyaP]Cla',
+  database: 'flywork1_lingolaTravel',
   waitForConnections: true,
-  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
-  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT) || 0,
+  connectionLimit: 10,
+  queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
-  charset: 'utf8mb4'
+  charset: 'utf8mb4',
+  timezone: '+00:00', // UTC
 });
 
 // Test database connection
-async function testConnection() {
-  try {
-    const connection = await pool.getConnection();
-    console.log('✅ Database connected successfully');
+pool.getConnection()
+  .then((connection) => {
+    logger.info('Database connected successfully');
     connection.release();
-    return true;
-  } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
-    return false;
-  }
-}
+  })
+  .catch((error) => {
+    logger.error('Database connection failed:', error);
+    process.exit(1);
+  });
 
-// Execute query helper
-async function query(sql, params = []) {
+// Handle pool errors
+pool.on('error', (err) => {
+  logger.error('Database pool error:', err);
+  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+    logger.info('Attempting to reconnect to database...');
+  } else {
+    throw err;
+  }
+});
+
+/**
+ * Execute a query with error handling
+ * @param {string} query - SQL query
+ * @param {Array} params - Query parameters
+ * @returns {Promise} Query result
+ */
+async function query(query, params = []) {
+  const start = Date.now();
   try {
-    const [results] = await pool.execute(sql, params);
+    const [results] = await pool.execute(query, params);
+    const duration = Date.now() - start;
+
+    // Log slow queries (> 100ms)
+    if (duration > 100) {
+      logger.warn(`Slow query detected (${duration}ms):`, query.substring(0, 100));
+    }
+
     return results;
   } catch (error) {
-    console.error('Database query error:', error);
+    logger.error('Database query error:', {
+      query: query.substring(0, 100),
+      error: error.message,
+    });
     throw error;
   }
 }
 
-// Transaction helper
+/**
+ * Execute a transaction
+ * @param {Function} callback - Transaction callback
+ * @returns {Promise} Transaction result
+ */
 async function transaction(callback) {
   const connection = await pool.getConnection();
   await connection.beginTransaction();
-  
+
   try {
     const result = await callback(connection);
     await connection.commit();
@@ -58,9 +86,17 @@ async function transaction(callback) {
   }
 }
 
+/**
+ * Get a connection from the pool (for special cases)
+ * @returns {Promise} Connection
+ */
+async function getConnection() {
+  return await pool.getConnection();
+}
+
 module.exports = {
   pool,
   query,
   transaction,
-  testConnection
+  getConnection,
 };

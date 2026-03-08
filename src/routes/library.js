@@ -43,6 +43,17 @@ router.post('/folders',
   libraryController.createFolder
 );
 
+// PUT /api/v1/library/folders/:id - Update folder (İŞTE EKLENEN KISIM BURASI 🚀)
+router.put('/folders/:id',
+  authenticateToken,
+  [
+    body('name').isString().trim().isLength({ min: 1, max: 100 }),
+    body('color').optional().isString()
+  ],
+  handleValidationErrors,
+  libraryController.updateFolder
+);
+
 // POST /api/v1/library/folders/:id/items - Add item to folder
 router.post('/folders/:id/items',
   authenticateToken,

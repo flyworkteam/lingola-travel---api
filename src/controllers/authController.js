@@ -1,10 +1,9 @@
-// Authentication Controller
 const { body } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
 const { query, transaction } = require('../config/database');
-const { 
-  generateAccessToken, 
-  generateRefreshToken, 
+const {
+  generateAccessToken,
+  generateRefreshToken,
   verifyRefreshToken,
   hashRefreshToken,
   compareRefreshToken,
@@ -21,16 +20,17 @@ const { verifyGoogleToken, verifyAppleToken, verifyFacebookToken } = require('..
 async function createDefaultLibraryFolders(userId) {
   try {
     const defaultFolders = [
-      { name: 'My Airport Essentials', icon: 'assets/icons/airport.png', color: '#E3F2FD' },
-      { name: 'My Hotel Essentials', icon: 'assets/icons/accommodation.png', color: '#FFE4CC' },
-      { name: 'Transport Essentials', icon: 'assets/icons/transportation.png', color: '#FFF9C4' },
-      { name: 'My Food Essentials', icon: 'assets/icons/food_drink.png', color: '#FFCDD2' },
-      { name: 'My Shopping Essentials', icon: 'assets/icons/shopping.png', color: '#C8E6C9' },
-      { name: 'Culture Essentials', icon: 'assets/icons/culture.png', color: '#B3E5FC' },
-      { name: 'Meeting Essentials', icon: 'assets/icons/meeting.png', color: '#D7CCC8' },
-      { name: 'Sport Essentials', icon: 'assets/icons/sport.png', color: '#F8BBD0' },
-      { name: 'Health Essentials', icon: 'assets/icons/health.png', color: '#C5E1A5' },
-      { name: 'Business Essentials', icon: 'assets/icons/business.png', color: '#BBDEFB' }
+      { name: 'General Essentials', icon: 'assets/images/home/general.png', color: '#FFD166' },
+      { name: 'Travel Essentials', icon: 'assets/icons/airport.svg', color: '#B8A7FF' },
+      { name: 'Accommodation Essentials', icon: 'assets/icons/acc.svg', color: '#FF9F6A' },
+      { name: 'Food & Drink Essentials', icon: 'assets/icons/ffff.svg', color: '#FF8FA5' },
+      { name: 'Culture Essentials', icon: 'assets/icons/culture.svg', color: '#B8D9FF' },
+      { name: 'Shopping Essentials', icon: 'assets/icons/shopping.svg', color: '#8BDDCD' },
+      { name: 'Direction Essentials', icon: 'assets/images/home/direction.png', color: '#F9D26B' },
+      { name: 'Sport Essentials', icon: 'assets/icons/sport.svg', color: '#E4B3FF' },
+      { name: 'Health Essentials', icon: 'assets/icons/health.svg', color: '#B8FFC9' },
+      { name: 'Business Essentials', icon: 'assets/icons/business.png', color: '#A4C8E1' },
+      { name: 'Emergency Essentials', icon: 'assets/images/home/emergency.png', color: '#FF6B6B' }
     ];
 
     for (const folder of defaultFolders) {
@@ -39,11 +39,12 @@ async function createDefaultLibraryFolders(userId) {
         [userId, folder.name, folder.icon, folder.color]
       );
     }
-    
+
     console.log(`✅ Created ${defaultFolders.length} default folders for user ${userId}`);
+    return true;
   } catch (error) {
     console.error('Error creating default library folders:', error);
-    // Don't throw - this shouldn't break registration
+    return false;
   }
 }
 
@@ -53,67 +54,51 @@ async function createDefaultLibraryFolders(userId) {
 async function login(req, res) {
   try {
     const { email, password } = req.body;
-    
-    // Find user by email
-    const users = await query(
-      'SELECT * FROM users WHERE email = ? AND auth_provider = ?',
-      [email, 'email']
-    );
-    
+
+    const sql = `
+      SELECT u.*, uo.target_language, uo.profession, uo.english_level, uo.daily_goal, uo.daily_goal_minutes
+      FROM users u
+      LEFT JOIN user_onboarding uo ON u.id = uo.user_id
+      WHERE u.email = ? AND u.auth_provider = ?
+    `;
+
+    const users = await query(sql, [email, 'email']);
+
     if (users.length === 0) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.ACCOUNT_NOT_FOUND, 'Email kayıtlı değil')
-      );
+      return res.status(401).json(errorResponse(ErrorCodes.ACCOUNT_NOT_FOUND, 'Email kayıtlı değil'));
     }
-    
+
     const user = users[0];
-    
-    // Verify password
+
     const isValidPassword = await comparePassword(password, user.password_hash);
     if (!isValidPassword) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Şifre hatalı')
-      );
+      return res.status(401).json(errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Şifre hatalı'));
     }
-    
-    // Generate tokens
+
     const accessToken = generateAccessToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
-    
-    // Store hashed refresh token
+
     const tokenHash = await hashRefreshToken(refreshToken);
     const expiresAt = getRefreshTokenExpiry();
-    
+
     await query(
       'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
       [user.id, tokenHash, expiresAt]
     );
-    
-    // Update last login
-    await query(
-      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
-      [user.id]
-    );
-    
-    // Log audit
+
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
+
     await query(
       'INSERT INTO audit_logs (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
       [user.id, 'login', req.ip, req.get('user-agent')]
     );
-    
-    // Remove sensitive data
+
     delete user.password_hash;
-    
-    res.json(successResponse({
-      user,
-      accessToken,
-      refreshToken
-    }));
+
+    res.json(successResponse({ user, accessToken, refreshToken }));
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json(
-      errorResponse(ErrorCodes.SERVER_ERROR, 'Giriş yapılamadı')
-    );
+    res.status(500).json(errorResponse(ErrorCodes.SERVER_ERROR, 'Giriş yapılamadı'));
   }
 }
 
@@ -123,45 +108,37 @@ async function login(req, res) {
 async function googleLogin(req, res) {
   try {
     const { idToken } = req.body;
-    
-    // Verify Google ID token
+
     const googleUser = await verifyGoogleToken(idToken);
-    
+
     if (!googleUser) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Google token doğrulanamadı')
-      );
+      return res.status(401).json(errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Google token doğrulanamadı'));
     }
-    
-    // Check if user exists
-    let users = await query(
-      'SELECT * FROM users WHERE auth_provider = ? AND external_auth_id = ?',
-      ['google', googleUser.sub]
-    );
-    
+
+    const sql = `
+      SELECT u.*, uo.target_language, uo.profession, uo.english_level, uo.daily_goal, uo.daily_goal_minutes
+      FROM users u
+      LEFT JOIN user_onboarding uo ON u.id = uo.user_id
+      WHERE u.auth_provider = ? AND u.external_auth_id = ?
+    `;
+    let users = await query(sql, ['google', googleUser.sub]);
+
     let user;
     let isNewUser = false;
-    
+
     if (users.length === 0) {
-      // Create new user
       isNewUser = true;
       const userId = uuidv4();
-      
+
       await query(
         `INSERT INTO users (id, email, name, photo_url, auth_provider, external_auth_id, trial_started_at) 
          VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [userId, googleUser.email, googleUser.name, googleUser.picture, 'google', googleUser.sub]
       );
-      
-      // Create user stats
-      await query(
-        'INSERT INTO user_stats (user_id) VALUES (?)',
-        [userId]
-      );
-      
-      // Create default library folders
+
+      await query('INSERT INTO user_stats (user_id) VALUES (?)', [userId]);
       await createDefaultLibraryFolders(userId);
-      
+
       user = {
         id: userId,
         email: googleUser.email,
@@ -170,49 +147,34 @@ async function googleLogin(req, res) {
         auth_provider: 'google',
         is_premium: false,
         is_anonymous: false,
-        trial_started_at: new Date()
+        trial_started_at: new Date(),
+        target_language: null,
+        english_level: null,
+        profession: null,
+        daily_goal: null,
+        daily_goal_minutes: null
       };
     } else {
       user = users[0];
     }
-    
-    // Generate tokens
+
     const accessToken = generateAccessToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
-    
-    // Store refresh token
     const tokenHash = await hashRefreshToken(refreshToken);
     const expiresAt = getRefreshTokenExpiry();
-    
-    await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-      [user.id, tokenHash, expiresAt]
-    );
-    
-    // Update last login
-    await query(
-      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
-      [user.id]
-    );
-    
-    // Log audit
+
+    await query('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [user.id, tokenHash, expiresAt]);
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
     await query(
       'INSERT INTO audit_logs (user_id, action, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)',
       [user.id, isNewUser ? 'google_signup' : 'google_login', req.ip, req.get('user-agent'), JSON.stringify({ isNewUser })]
     );
-    
+
     delete user.password_hash;
-    
-    res.json(successResponse({
-      user,
-      accessToken,
-      refreshToken
-    }));
+    res.json(successResponse({ user, accessToken, refreshToken }));
   } catch (error) {
     console.error('Google login error:', error);
-    res.status(500).json(
-      errorResponse(ErrorCodes.SERVER_ERROR, 'Google girişi başarısız')
-    );
+    res.status(500).json(errorResponse(ErrorCodes.SERVER_ERROR, 'Google girişi başarısız'));
   }
 }
 
@@ -222,50 +184,39 @@ async function googleLogin(req, res) {
 async function appleLogin(req, res) {
   try {
     const { identityToken, authorizationCode, email, name } = req.body;
-    
-    // Verify Apple identity token
+
     const appleUser = await verifyAppleToken(identityToken);
-    
+
     if (!appleUser) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Apple token doğrulanamadı')
-      );
+      return res.status(401).json(errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Apple token doğrulanamadı'));
     }
-    
-    // Check if user exists
-    let users = await query(
-      'SELECT * FROM users WHERE auth_provider = ? AND external_auth_id = ?',
-      ['apple', appleUser.sub]
-    );
-    
+
+    const sql = `
+      SELECT u.*, uo.target_language, uo.profession, uo.english_level, uo.daily_goal, uo.daily_goal_minutes
+      FROM users u
+      LEFT JOIN user_onboarding uo ON u.id = uo.user_id
+      WHERE u.auth_provider = ? AND u.external_auth_id = ?
+    `;
+    let users = await query(sql, ['apple', appleUser.sub]);
+
     let user;
     let isNewUser = false;
-    
+
     if (users.length === 0) {
-      // Create new user
-      // Note: Apple only provides email/name on first sign-in
       isNewUser = true;
       const userId = uuidv4();
-      
-      // Use provided email/name from first sign-in, otherwise use token data
       const userEmail = email || appleUser.email;
       const userName = name || 'Apple User';
-      
+
       await query(
         `INSERT INTO users (id, email, name, auth_provider, external_auth_id, trial_started_at) 
          VALUES (?, ?, ?, ?, ?, NOW())`,
         [userId, userEmail, userName, 'apple', appleUser.sub]
       );
-      
-      // Create user stats
-      await query(
-        'INSERT INTO user_stats (user_id) VALUES (?)',
-        [userId]
-      );
-      
-      // Create default library folders
+
+      await query('INSERT INTO user_stats (user_id) VALUES (?)', [userId]);
       await createDefaultLibraryFolders(userId);
-      
+
       user = {
         id: userId,
         email: userEmail,
@@ -274,74 +225,102 @@ async function appleLogin(req, res) {
         auth_provider: 'apple',
         is_premium: false,
         is_anonymous: false,
-        trial_started_at: new Date()
+        trial_started_at: new Date(),
+        target_language: null,
+        english_level: null,
+        profession: null,
+        daily_goal: null,
+        daily_goal_minutes: null
       };
     } else {
       user = users[0];
-      
-      // Update email/name if provided (in case they were null before)
       if (email || name) {
         const updates = [];
         const params = [];
-        
-        if (email && !user.email) {
-          updates.push('email = ?');
-          params.push(email);
-        }
-        if (name && !user.name) {
-          updates.push('name = ?');
-          params.push(name);
-        }
-        
+        if (email && !user.email) { updates.push('email = ?'); params.push(email); }
+        if (name && !user.name) { updates.push('name = ?'); params.push(name); }
         if (updates.length > 0) {
           params.push(user.id);
-          await query(
-            `UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
-            params
-          );
+          await query(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`, params);
         }
       }
     }
-    
-    // Generate tokens
+
     const accessToken = generateAccessToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
-    
-    // Store refresh token
     const tokenHash = await hashRefreshToken(refreshToken);
     const expiresAt = getRefreshTokenExpiry();
-    
-    await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-      [user.id, tokenHash, expiresAt]
-    );
-    
-    // Update last login
-    await query(
-      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
-      [user.id]
-    );
-    
-    // Log audit
+
+    await query('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [user.id, tokenHash, expiresAt]);
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
     await query(
       'INSERT INTO audit_logs (user_id, action, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)',
       [user.id, isNewUser ? 'apple_signup' : 'apple_login', req.ip, req.get('user-agent'), JSON.stringify({ isNewUser })]
     );
-    
+
     delete user.password_hash;
-    
-    res.json(successResponse({
-      user,
-      accessToken,
-      refreshToken
-    }));
+    res.json(successResponse({ user, accessToken, refreshToken }));
   } catch (error) {
     console.error('Apple login error:', error);
-    res.status(500).json(
-      errorResponse(ErrorCodes.SERVER_ERROR, 'Apple girişi başarısız')
-    );
+    res.status(500).json(errorResponse(ErrorCodes.SERVER_ERROR, 'Apple girişi başarısız'));
   }
 }
+
+async function updatePremiumStatus(req, res) {
+  try {
+    const userId = req.user.id; // Authentication middleware'den gelmeli
+    const { isPremium, subscriptionType, expiresAt } = req.body;
+
+    if (isPremium === undefined) {
+      return res.status(400).json(errorResponse(ErrorCodes.VALIDATION_ERROR, 'isPremium durumu gerekli'));
+    }
+
+    // Kullanıcının mevcut durumunu kontrol et
+    const userCheck = await query('SELECT id FROM users WHERE id = ?', [userId]);
+    if (userCheck.length === 0) {
+      return res.status(404).json(errorResponse(ErrorCodes.ACCOUNT_NOT_FOUND, 'Kullanıcı bulunamadı'));
+    }
+
+    // Premium statüsünü güncelle
+    // Not: Veritabanında premium bitiş tarihi (premium_expires_at) veya abonelik tipi tutuyorsanız
+    // o alanları da buraya ekleyebilirsiniz. Şimdilik sadece is_premium güncelleniyor.
+
+    let updateSql = 'UPDATE users SET is_premium = ?, updated_at = NOW() WHERE id = ?';
+    let updateParams = [isPremium ? 1 : 0, userId];
+
+    // Eğer veritabanınızda bu alanlar varsa SQL'i genişletin (Opsiyonel)
+    /*
+    if (expiresAt || subscriptionType) {
+       updateSql = 'UPDATE users SET is_premium = ?, subscription_type = ?, premium_expires_at = ?, updated_at = NOW() WHERE id = ?';
+       updateParams = [isPremium ? 1 : 0, subscriptionType || 'none', expiresAt || null, userId];
+    }
+    */
+
+    await query(updateSql, updateParams);
+
+    // İşlemi logla
+    await query(
+      'INSERT INTO audit_logs (user_id, action, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)',
+      [
+        userId,
+        isPremium ? 'premium_activated' : 'premium_deactivated',
+        req.ip,
+        req.get('user-agent'),
+        JSON.stringify({ subscriptionType, expiresAt })
+      ]
+    );
+
+    res.json(successResponse({
+      message: `Premium statüsü ${isPremium ? 'aktif' : 'pasif'} olarak güncellendi`,
+      is_premium: isPremium
+    }));
+
+  } catch (error) {
+    console.error('Update premium status error:', error);
+    res.status(500).json(errorResponse(ErrorCodes.SERVER_ERROR, 'Premium statüsü güncellenemedi'));
+  }
+}
+
 
 /**
  * Facebook Login
@@ -349,45 +328,37 @@ async function appleLogin(req, res) {
 async function facebookLogin(req, res) {
   try {
     const { accessToken: fbAccessToken } = req.body;
-    
-    // Verify Facebook access token
+
     const facebookUser = await verifyFacebookToken(fbAccessToken);
-    
+
     if (!facebookUser) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Facebook token doğrulanamadı')
-      );
+      return res.status(401).json(errorResponse(ErrorCodes.INVALID_CREDENTIALS, 'Facebook token doğrulanamadı'));
     }
-    
-    // Check if user exists
-    let users = await query(
-      'SELECT * FROM users WHERE auth_provider = ? AND external_auth_id = ?',
-      ['facebook', facebookUser.sub]
-    );
-    
+
+    const sql = `
+      SELECT u.*, uo.target_language, uo.profession, uo.english_level, uo.daily_goal, uo.daily_goal_minutes
+      FROM users u
+      LEFT JOIN user_onboarding uo ON u.id = uo.user_id
+      WHERE u.auth_provider = ? AND u.external_auth_id = ?
+    `;
+    let users = await query(sql, ['facebook', facebookUser.sub]);
+
     let user;
     let isNewUser = false;
-    
+
     if (users.length === 0) {
-      // Create new user
       isNewUser = true;
       const userId = uuidv4();
-      
+
       await query(
         `INSERT INTO users (id, email, name, photo_url, auth_provider, external_auth_id, trial_started_at) 
          VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [userId, facebookUser.email, facebookUser.name, facebookUser.picture, 'facebook', facebookUser.sub]
       );
-      
-      // Create user stats
-      await query(
-        'INSERT INTO user_stats (user_id) VALUES (?)',
-        [userId]
-      );
-      
-      // Create default library folders
+
+      await query('INSERT INTO user_stats (user_id) VALUES (?)', [userId]);
       await createDefaultLibraryFolders(userId);
-      
+
       user = {
         id: userId,
         email: facebookUser.email,
@@ -396,49 +367,34 @@ async function facebookLogin(req, res) {
         auth_provider: 'facebook',
         is_premium: false,
         is_anonymous: false,
-        trial_started_at: new Date()
+        trial_started_at: new Date(),
+        target_language: null,
+        english_level: null,
+        profession: null,
+        daily_goal: null,
+        daily_goal_minutes: null
       };
     } else {
       user = users[0];
     }
-    
-    // Generate JWT tokens
+
     const jwtAccessToken = generateAccessToken(user.id);
     const jwtRefreshToken = generateRefreshToken(user.id);
-    
-    // Store refresh token
     const tokenHash = await hashRefreshToken(jwtRefreshToken);
     const expiresAt = getRefreshTokenExpiry();
-    
-    await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-      [user.id, tokenHash, expiresAt]
-    );
-    
-    // Update last login
-    await query(
-      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
-      [user.id]
-    );
-    
-    // Log audit
+
+    await query('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [user.id, tokenHash, expiresAt]);
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
     await query(
       'INSERT INTO audit_logs (user_id, action, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)',
       [user.id, isNewUser ? 'facebook_signup' : 'facebook_login', req.ip, req.get('user-agent'), JSON.stringify({ isNewUser })]
     );
-    
+
     delete user.password_hash;
-    
-    res.json(successResponse({
-      user,
-      accessToken: jwtAccessToken,
-      refreshToken: jwtRefreshToken
-    }));
+    res.json(successResponse({ user, accessToken: jwtAccessToken, refreshToken: jwtRefreshToken }));
   } catch (error) {
     console.error('Facebook login error:', error);
-    res.status(500).json(
-      errorResponse(ErrorCodes.SERVER_ERROR, 'Facebook girişi başarısız')
-    );
+    res.status(500).json(errorResponse(ErrorCodes.SERVER_ERROR, 'Facebook girişi başarısız'));
   }
 }
 
@@ -448,89 +404,68 @@ async function facebookLogin(req, res) {
 async function anonymousLogin(req, res) {
   try {
     const { deviceId } = req.body;
-    
+
     if (!deviceId) {
-      return res.status(400).json(
-        errorResponse(ErrorCodes.VALIDATION_ERROR, 'Device ID gerekli')
-      );
+      return res.status(400).json(errorResponse(ErrorCodes.VALIDATION_ERROR, 'Device ID gerekli'));
     }
-    
-    // Check if device already has an account
-    let users = await query(
-      'SELECT * FROM users WHERE device_id = ? AND is_anonymous = true',
-      [deviceId]
-    );
-    
+
+    const sql = `
+      SELECT u.*, uo.target_language, uo.profession, uo.english_level, uo.daily_goal, uo.daily_goal_minutes
+      FROM users u
+      LEFT JOIN user_onboarding uo ON u.id = uo.user_id
+      WHERE u.device_id = ? AND u.is_anonymous = true
+    `;
+    let users = await query(sql, [deviceId]);
+
     let user;
     let isNewUser = false;
-    
+
     if (users.length === 0) {
-      // Create anonymous user
       isNewUser = true;
       const userId = uuidv4();
-      
+
       await query(
         `INSERT INTO users (id, device_id, auth_provider, is_anonymous, trial_started_at) 
          VALUES (?, ?, ?, true, NOW())`,
         [userId, deviceId, 'anonymous']
       );
-      
-      // Create user stats
-      await query(
-        'INSERT INTO user_stats (user_id) VALUES (?)',
-        [userId]
-      );
-      
-      // Create default library folders
+
+      await query('INSERT INTO user_stats (user_id) VALUES (?)', [userId]);
       await createDefaultLibraryFolders(userId);
-      
+
       user = {
         id: userId,
         device_id: deviceId,
         auth_provider: 'anonymous',
         is_anonymous: true,
         is_premium: false,
-        trial_started_at: new Date()
+        trial_started_at: new Date(),
+        target_language: null,
+        english_level: null,
+        profession: null,
+        daily_goal: null,
+        daily_goal_minutes: null
       };
     } else {
       user = users[0];
     }
-    
-    // Generate tokens
+
     const accessToken = generateAccessToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
-    
-    // Store refresh token
     const tokenHash = await hashRefreshToken(refreshToken);
     const expiresAt = getRefreshTokenExpiry();
-    
-    await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-      [user.id, tokenHash, expiresAt]
-    );
-    
-    // Update last login
-    await query(
-      'UPDATE users SET last_login_at = NOW() WHERE id = ?',
-      [user.id]
-    );
-    
-    // Log audit
+
+    await query('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [user.id, tokenHash, expiresAt]);
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
     await query(
       'INSERT INTO audit_logs (user_id, action, ip_address, user_agent, metadata) VALUES (?, ?, ?, ?, ?)',
       [user.id, isNewUser ? 'anonymous_signup' : 'anonymous_login', req.ip, req.get('user-agent'), JSON.stringify({ deviceId })]
     );
-    
-    res.json(successResponse({
-      user,
-      accessToken,
-      refreshToken
-    }));
+
+    res.json(successResponse({ user, accessToken, refreshToken }));
   } catch (error) {
     console.error('Anonymous login error:', error);
-    res.status(500).json(
-      errorResponse(ErrorCodes.SERVER_ERROR, 'Anonim giriş başarısız')
-    );
+    res.status(500).json(errorResponse(ErrorCodes.SERVER_ERROR, 'Anonim giriş başarısız'));
   }
 }
 
@@ -540,29 +475,14 @@ async function anonymousLogin(req, res) {
 async function refreshToken(req, res) {
   try {
     const { refreshToken: token } = req.body;
-    
-    if (!token) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.INVALID_TOKEN, 'Refresh token gerekli')
-      );
-    }
-    
-    // Verify token structure
+
+    if (!token) return res.status(401).json(errorResponse(ErrorCodes.INVALID_TOKEN, 'Refresh token gerekli'));
+
     const decoded = verifyRefreshToken(token);
-    
-    // Find token in database
-    const tokens = await query(
-      'SELECT * FROM refresh_tokens WHERE user_id = ? AND expires_at > NOW()',
-      [decoded.userId]
-    );
-    
-    if (tokens.length === 0) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.TOKEN_NOT_FOUND, 'Token bulunamadı veya süresi doldu')
-      );
-    }
-    
-    // Verify token hash
+    const tokens = await query('SELECT * FROM refresh_tokens WHERE user_id = ? AND expires_at > NOW()', [decoded.userId]);
+
+    if (tokens.length === 0) return res.status(401).json(errorResponse(ErrorCodes.TOKEN_NOT_FOUND, 'Token bulunamadı veya süresi doldu'));
+
     let validToken = null;
     for (const t of tokens) {
       if (await compareRefreshToken(token, t.token_hash)) {
@@ -570,42 +490,23 @@ async function refreshToken(req, res) {
         break;
       }
     }
-    
-    if (!validToken) {
-      return res.status(401).json(
-        errorResponse(ErrorCodes.INVALID_TOKEN, 'Geçersiz refresh token')
-      );
-    }
-    
-    // Generate new tokens
+
+    if (!validToken) return res.status(401).json(errorResponse(ErrorCodes.INVALID_TOKEN, 'Geçersiz refresh token'));
+
     const newAccessToken = generateAccessToken(decoded.userId);
     const newRefreshToken = generateRefreshToken(decoded.userId);
-    
-    // Delete old token and store new one
     const newTokenHash = await hashRefreshToken(newRefreshToken);
     const expiresAt = getRefreshTokenExpiry();
-    
+
     await transaction(async (conn) => {
-      await conn.execute(
-        'DELETE FROM refresh_tokens WHERE id = ?',
-        [validToken.id]
-      );
-      
-      await conn.execute(
-        'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-        [decoded.userId, newTokenHash, expiresAt]
-      );
+      await conn.execute('DELETE FROM refresh_tokens WHERE id = ?', [validToken.id]);
+      await conn.execute('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [decoded.userId, newTokenHash, expiresAt]);
     });
-    
-    res.json(successResponse({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken
-    }));
+
+    res.json(successResponse({ accessToken: newAccessToken, refreshToken: newRefreshToken }));
   } catch (error) {
     console.error('Refresh token error:', error);
-    res.status(401).json(
-      errorResponse(ErrorCodes.INVALID_TOKEN, 'Token yenileneme hatası')
-    );
+    res.status(401).json(errorResponse(ErrorCodes.INVALID_TOKEN, 'Token yenileneme hatası'));
   }
 }
 
@@ -615,40 +516,19 @@ async function refreshToken(req, res) {
 async function logout(req, res) {
   try {
     const { refreshToken: token } = req.body;
-    
-    if (!token) {
-      return res.json(successResponse({ message: 'Çıkış yapıldı' }));
-    }
-    
-    // Verify and decode token
+    if (!token) return res.json(successResponse({ message: 'Çıkış yapıldı' }));
+
     const decoded = verifyRefreshToken(token);
-    
-    // Delete all refresh tokens for this user (optional: only delete this specific token)
-    await query(
-      'DELETE FROM refresh_tokens WHERE user_id = ?',
-      [decoded.userId]
-    );
-    
-    // Log audit
-    await query(
-      'INSERT INTO audit_logs (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
-      [decoded.userId, 'logout', req.ip, req.get('user-agent')]
-    );
-    
+    await query('DELETE FROM refresh_tokens WHERE user_id = ?', [decoded.userId]);
+    await query('INSERT INTO audit_logs (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)', [decoded.userId, 'logout', req.ip, req.get('user-agent')]);
+
     res.json(successResponse({ message: 'Çıkış yapıldı' }));
   } catch (error) {
     console.error('Logout error:', error);
-    // Return success even on error (best practice for logout)
     res.json(successResponse({ message: 'Çıkış yapıldı' }));
   }
 }
 
 module.exports = {
-  login,
-  googleLogin,
-  appleLogin,
-  facebookLogin,
-  anonymousLogin,
-  refreshToken,
-  logout
+  login, googleLogin, appleLogin, facebookLogin, anonymousLogin, refreshToken, logout, updatePremiumStatus
 };

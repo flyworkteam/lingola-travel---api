@@ -10,13 +10,12 @@ const getLessonById = async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user?.id;
 
-    // Get lesson details
-    let lessonSql, lessonParams;
-
-    if (userId) {
-      lessonSql = `
+    // 1. Ders detaylarını getir (Yeni eklenen focus_word ve main_sentence dahil)
+    let lessonSql = `
         SELECT 
-          l.*,
+          l.id, l.course_id, l.title, l.description, l.lesson_order, 
+          l.image_url, l.total_steps,
+          l.focus_word, l.main_sentence, -- Yeni sütunlar
           c.title as course_title,
           c.category as course_category,
           c.is_free as course_is_free,
@@ -41,30 +40,8 @@ const getLessonById = async (req, res, next) => {
         LEFT JOIN user_lesson_progress ulp ON l.id = ulp.lesson_id AND ulp.user_id = ?
         WHERE l.id = ?
       `;
-      lessonParams = [userId, id];
-    } else {
-      lessonSql = `
-        SELECT 
-          l.*,
-          c.title as course_title,
-          c.category as course_category,
-          c.is_free as course_is_free,
-          c.target_language as course_target_language,
-          c.image_url as course_image_url,
-          'not_started' as user_status,
-          0 as user_progress,
-          0 as current_step,
-          0 as score,
-          0 as xp_earned,
-          NULL as completed_at
-        FROM lessons l
-        INNER JOIN courses c ON l.course_id = c.id
-        WHERE l.id = ?
-      `;
-      lessonParams = [id];
-    }
 
-    const lessons = await query(lessonSql, lessonParams);
+    const lessons = await query(lessonSql, [userId, id]);
 
     if (lessons.length === 0) {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Ders bulunamadı'));
@@ -72,31 +49,16 @@ const getLessonById = async (req, res, next) => {
 
     const lesson = lessons[0];
 
-    // Check if user has premium access (course-level check)
-    if (lesson.course_is_free === 0 && userId) {
-      const userSql = 'SELECT is_premium, trial_started_at FROM users WHERE id = ?';
-      const users = await query(userSql, [userId]);
-
-      if (users.length > 0) {
-        const user = users[0];
-        const trialEnded = user.trial_started_at &&
-          (new Date() - new Date(user.trial_started_at)) > (24 * 60 * 60 * 1000);
-
-        if (!user.is_premium && trialEnded) {
-          return res.status(403).json(errorResponse('PREMIUM_REQUIRED', 'Bu ders premium üyelik gerektirir'));
-        }
-      }
-    }
-
-    // Get vocabulary for this lesson
+    // 2. Kelime listesini getir (İki farklı anlam ve örnek cümleler dahil)
     const vocabSql = `
       SELECT 
         id,
         term,
         definition,
-        icon_path,
-        icon_color,
-        audio_url,
+        meaning_1,
+        example_sentence_1,
+        meaning_2,
+        example_sentence_2,
         display_order
       FROM lesson_vocabulary
       WHERE lesson_id = ?
@@ -116,7 +78,6 @@ const getLessonById = async (req, res, next) => {
     next(error);
   }
 };
-
 /**
  * POST /api/v1/lessons/:id/progress
  * Update lesson progress
