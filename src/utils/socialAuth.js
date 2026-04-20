@@ -50,7 +50,6 @@ async function verifyAppleToken(identityToken) {
   try {
     const appleIdTokenClaims = await appleSignin.verifyIdToken(identityToken, {
       audience: process.env.APPLE_CLIENT_ID,
-      nonce: 'nonce_if_used' // Optional: verify nonce if you use one
     });
     
     return {
@@ -63,7 +62,6 @@ async function verifyAppleToken(identityToken) {
     return null;
   }
 }
-
 /**
  * Verify Facebook Access Token
  */
