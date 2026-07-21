@@ -3,11 +3,11 @@ const logger = require('../utils/logger');
 
 // Create connection pool for better performance and scalability
 const pool = mysql.createPool({
-  host: '5.39.8.160',
-  port: 3306,
-  user: 'flywork1_lingolaTravelUser',
-  password: 'V*HkrnhmoyaP]Cla',
-  database: 'flywork1_lingolaTravel',
+  host: process.env.DB_HOST || 'localhost',
+  port: Number.parseInt(process.env.DB_PORT, 10) || 3306,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

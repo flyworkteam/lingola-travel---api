@@ -10,9 +10,10 @@ const { apiLimiter } = require('./middleware/rateLimiter');
 
 // Import routes
 const routes = require('./routes');
+const panelRoutes = require('./routes/panelRoutes');
 
 const app = express();
-const PORT =  3030;
+const PORT = Number(process.env.PORT) || 3030;
 const API_VERSION = process.env.API_VERSION || 'v1';
 
 // ===================================
@@ -61,6 +62,7 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use(`/api/${API_VERSION}`, routes);
+app.use('/panel/v1', panelRoutes);
 
 // 404 handler
 app.use((req, res) => {
